@@ -1,0 +1,11 @@
+# IDE project files and directories
+.idea
+.vscode
+.bundle
+.atom
+.settings
+
+# Temporary text editor files
+*~
+*.swp
+*.swo
