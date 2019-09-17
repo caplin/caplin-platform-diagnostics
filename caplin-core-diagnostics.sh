@@ -126,13 +126,15 @@ log
 log "Script temp dir: $(basename ${TEMP_DIR})"
 log
 
-log "Recording OS version"
 if [ -r /etc/os-release ]; then
+  log "Recording /etc/os-release"
   cp /etc/os-release os-release
 fi
 if [ -r /etc/redhat-release ]; then
+  log "Recording /etc/redhat-release"
   cp /etc/redhat-release redhat-release
 fi
+log "Recording 'uname -a' output"
 uname -a > uname.out
 
 if [ -x "$DFW" ]; then
