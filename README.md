@@ -34,9 +34,7 @@ This script has the following requirements:
 
 ### Usage
 
-The script takes two command-line arguments.
-
-**Usage**: `caplin-process-diagnostics.sh <binary> <core-file>`
+**Syntax**: `caplin-process-diagnostics.sh <binary> <core-file>`
 
 *   `<binary>`: path to the crashed process's binary
 *   `<core-file>`: path to the core-file dumped by the crashed process
@@ -62,7 +60,7 @@ This script collates the following information:
 | Core file libraries                          | `gdb` RPM package | -    |
 | Component binary                             | -                 | -    |
 
-### Example usage
+### Example
 
 The example below collates diagnostics for a core file, `core.4972`, dumped by a Liberator binary, `rttpd`:
 
@@ -121,7 +119,7 @@ After running the script, log in to Caplin's secure [File Upload Facility](https
 
 ### Requirements
 
-The most useful diagnostics require the `gdb` RPM package (GNU Debugger).
+The most useful diagnostics require the GNU Debugger to be installed (`gdb` RPM package).
 
 
 **Mandatory requirements**:
@@ -137,8 +135,6 @@ The most useful diagnostics require the `gdb` RPM package (GNU Debugger).
 *   `strace` RPM package installed. Only required if requested by Caplin Support.
 
 ### Usage
-
-To run the default set of diagnostics, pass the running component's process identifier (PID) as the first command line argument.
 
 **Syntax**: `caplin-process-diagnostics.sh [options] pid`
 
@@ -216,7 +212,7 @@ The optional diagnostics have a potentially greater performance impact and shoul
 
 *   **JVM class histogram**: halts the JVM temporarily for the duration of the diagnostic.
 
-### Example usage
+### Example
 
 The example below collates diagnostics for a Liberator running as process 4972:
 
