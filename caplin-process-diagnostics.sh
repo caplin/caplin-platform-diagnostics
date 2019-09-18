@@ -25,40 +25,103 @@
 
 HELP="$(cat << EOF
 
-  Caplin Process Diagnostics
-  ==========================
+NAME
+  $(basename $0) - run diagnostics on a Caplin process
 
-  Collates diagnostic information for a running Caplin process.
-  For the most comprehensive diagnostics, install the 'gdb' package
-  and run this script with root privileges.
+SYNOPSIS
+  $(basename $0) [options] pid
 
-  This script does not terminate the target process.
+    [options]:  see OPTIONS below
+    pid:        process identifier
 
-  Usage:        $(basename $0) <process-id>
-  Dependencies: gdb package (optional but recommended), strace package (optional)
-  User:         Run as root (recommended) or the process's user
-  Runtime:      3-5 minutes (approximately)
+DEPENDENCIES
+  - CentOS/RHEL 6 or 7
+  - GNU Debugger ('gdb' RPM package)
 
-  Diagnostics:
-    - Operating system version
-    - 'top' output for the system
-    - 'top' output for the process
-    - Disk space
-    - Memory usage
-    - 'vmstat' output
-    - Caplin Deployment Framework (DFW) reports
-    - Thread backtraces (Requires gdb. Run as root or the process's user.)
-    - JVM stack trace   (Run as root or the process's user.)
-    - 'strace' output   (Run as root.)
-    - Core file         (Requires gdb. Run as root.)
+DESCRIPTION
+  Collates diagnostic information for a Caplin process, without
+  terminating the process.
+
+  This script captures the following diagnostics:
+    - Operating system name and version
+    - Process limits
+    - 'top' output for the system (30 seconds)
+    - 'top' output for the process (30 seconds)
+    - 'df' output for the process's <working-dir>/var directory
+    - 'free' output
+    - 'vmstat' output (30 seconds)
+    - If the process's binary is in a Caplin Deployment Framework:
+      - 'dfw info' output
+      - 'dfw status' output
+      - 'dfw versions' output
+    - If the process has a Java virtual machine (JVM):
+      - 'jcmd <pid> Thread.print' output
+      - 'jcmd <pid> GC.heap_info' output
+      - 'jcmd <pid> VM.system_properties' output
+      - 'jcmd <pid> VM.flags' output
+      - 'jcmd <pid> PerfCounter.print' output
+      - 'jstat -gc <pid>' output
+      - 'jstat -gcutil <pid>' output
+    - If the GNU Debugger is installed:
+      - 3x thread backtraces (10 seconds apart)
+      - Core dump
+      - Thread backtrace for core dump
+      - Copy of shared libraries referenced in the core dump
+
+OPTIONS
+  -h --help     Display this message
+
+  --strace      Include the optional strace diagnostic.
+                Enable only if requested by Caplin Support.
+
+  --jvm-heap    Include the optional JVM heap dump diagnostic.
+                Enable only if requested by Caplin Support.
+
+  --jvm-class-histogram
+                Include the optional JVM class histogram diagnostic.
+                Enable only if requested by Caplin Support.
 
 EOF
 )"
+
+RUN_STRACE=0
+RUN_JVM_HEAP=0
+RUN_JVM_CLASS_HISTOGRAM=0
+SHOW_HELP=0
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+  key="$1"
+  case $key in
+      -h|--help)
+      SHOW_HELP=1
+      shift
+      ;;
+      --strace)
+      RUN_STRACE=1
+      shift
+      ;;
+      --jvm-heap)
+      RUN_JVM_HEAP=1
+      shift
+      ;;
+      --jvm-class-histogram)
+      RUN_JVM_CLASS_HISTOGRAM=1
+      shift
+      ;;
+      *)
+      POSITIONAL+=("$1")
+      shift
+      ;;
+  esac
+done
+set -- "${POSITIONAL[@]}"
+
 if [ $# -ne 1 ]; then
   printf '%s\n\n' "$HELP"
   exit 1
 fi
-if [ $# -ne 1 -o $1 == 'help' -o $1 == '-h' -o $1 == '--help' ]; then
+if [ $SHOW_HELP -eq 1 ]; then
   printf '%s\n\n' "$HELP"
   exit 0
 fi
@@ -139,24 +202,32 @@ if [ $GDB_INSTALLED -eq 0 ]; then
   WARNINGS+=("GDB thread backtrace (requires 'gdb' package)" "core dump (requires 'gdb' package)")
 fi
 if ! command -v strace >/dev/null 2>&1; then
-  WARNINGS+=("strace (requires 'strace' package)")
+  if [ $RUN_STRACE -eq 1 ]; then
+    WARNINGS+=("strace (requires 'strace' package)")
+  fi
 fi
 if [ $WHOAMI == 'root' ]; then
   if [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
-    WARNINGS+=("GDB thread backtrace (prohibited for root by ptrace_scope $YAMA_PTRACE_SCOPE)")
-    WARNINGS+=("GDB core dump (prohibited for root by ptrace_scope $YAMA_PTRACE_SCOPE)")
-    WARNINGS+=("strace (prohibited for root by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    WARNINGS+=("GDB thread backtrace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    WARNINGS+=("GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    if [ $RUN_STRACE -eq 1 ]; then
+      WARNINGS+=("strace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    fi
   fi
 elif [ $WHOAMI == $PROC_USERNAME ]; then
   if [ $YAMA_PTRACE_SCOPE -gt 0 -a $YAMA_PTRACE_SCOPE -lt 3 ]; then
-    WARNINGS+=("GDB thread backtrace (prohibited for $WHOAMI by Yama ptrace_scope $YAMA_PTRACE_SCOPE -- run as root)")
-    WARNINGS+=("GDB core dump (prohibited for $WHOAMI by Yama ptrace_scope $YAMA_PTRACE_SCOPE -- run as root)")
-    WARNINGS+=("strace (prohibited for $WHOAMI by Yama ptrace_scope $YAMA_PTRACE_SCOPE -- run as root)")
+    WARNINGS+=("GDB thread backtrace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE -- run as root)")
+    WARNINGS+=("GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE -- run as root)")
+    if [ $RUN_STRACE -eq 1 ]; then
+      WARNINGS+=("strace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE -- run as root)")
+    fi
   fi
   if [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
-    WARNINGS+=("GDB thread backtrace (prohibited for $WHOAMI and root by ptrace_scope $YAMA_PTRACE_SCOPE)")
-    WARNINGS+=("GDB core dump (prohibited for $WHOAMI and root by ptrace_scope $YAMA_PTRACE_SCOPE)")
-    WARNINGS+=("strace (prohibited for $WHOAMI and root by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    WARNINGS+=("GDB thread backtrace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    WARNINGS+=("GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    if [ $RUN_STRACE -eq 1 ]; then
+      WARNINGS+=("strace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    fi
   fi
 fi
 if [ $DISK_SPACE -lt $PROC_MEMORY ]; then
@@ -167,16 +238,18 @@ if ! command -v jcmd >/dev/null 2>&1; then
 fi
 if [ ${#WARNINGS[@]} -gt 0 ]; then
   echo
-  echo "  Script user:              ${WHOAMI}"
-  echo "  Process user:             ${PROC_USERNAME}"
-  echo "  kernel.yama.ptrace_scope: ${YAMA_PTRACE_SCOPE}"
+  echo "Script user:               ${WHOAMI}"
+  echo "Process user:              ${PROC_USERNAME}"
+  if [ -e /proc/sys/kernel/yama/ptrace_scope ]; then
+    echo "kernel.yama.ptrace_scope:  ${YAMA_PTRACE_SCOPE}"
+  fi
   echo
-  echo "  The following diagnostics will be skipped:"
+  echo "The following diagnostics will be skipped:"
   for warning in "${WARNINGS[@]}"; do
-    echo "    - $warning"
+    echo "  - $warning"
   done
   echo
-  read -p "  Continue? [Y/N]: " RESPONSE
+  read -p "Continue? [Y/N]: " RESPONSE
   if [ $RESPONSE != 'y' -a $RESPONSE != 'Y' ]; then
     echo
     exit 1
@@ -199,8 +272,6 @@ cd $TEMP_DIR
 log
 log "Caplin Process Diagnostics"
 log "=========================="
-log
-log "Runtime:         3-5 minutes (approximately)"
 log
 log "Process ID:      ${PID}"
 log "Process binary:  ${BINARY}"
@@ -247,7 +318,7 @@ for i in {1..6}; do
   echo
   top -H -p $PID -b -n 1
   sleep 5
-done > ${CMD}-top.out
+done > top-${PID}.out
 
 if [ ! -z $WORKING_DIR ]; then
   if [ -d $WORKING_DIR/var ]; then
@@ -275,8 +346,6 @@ else
   log "Skipping 'vmstat' output (procps package required)"
 fi
 
-# ----------------------
-
 if [ -x "$DFW" ]; then
   log "Recording 'dfw info' output"
   $DFW info > dfw-info.out 2>&1
@@ -288,13 +357,11 @@ else
   log "Skipping Caplin Deployment Framework reports (dfw command not found)"
 fi
 
-# ----------------------
-
 if [ $GDB_INSTALLED -eq 1 ]; then
   if [ $WHOAMI == $PROC_USERNAME -a $YAMA_PTRACE_SCOPE -ne 0 ]; then
-    log "Skipping GDB thread backtraces (prohibited for $WHOAMI by Yama ptrace_scope $YAMA_PTRACE_SCOPE)"
+    log "Skipping GDB thread backtraces (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
   elif [ $WHOAMI == 'root' -a $YAMA_PTRACE_SCOPE -eq 3 ]; then
-    log "Skipping GDB thread backtraces (prohibited for root by Yama ptrace_scope $YAMA_PTRACE_SCOPE)"
+    log "Skipping GDB thread backtraces (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
   else
     for i in {1..3}; do
       log "${i}/3: Dumping GDB thread backtraces for process $PID"
@@ -316,8 +383,6 @@ else
   log "Skipping GDB thread backtraces (gdb package required)"
 fi
 
-# ----------------------
-
 if command -v jcmd >/dev/null 2>&1; then
   if jcmd -l | grep "^$PID " > /dev/null 2>&1; then
     if [ $WHOAMI == 'root' ]; then
@@ -329,26 +394,24 @@ if command -v jcmd >/dev/null 2>&1; then
     $JCMD $PID Thread.print > jvm-stacktrace 2>> diagnostics.log
     log "Recording JVM heap info"
     $JCMD $PID GC.heap_info > jvm-heapinfo 2>> diagnostics.log
-
-    # UNCOMMENT TO DUMP CLASS HISTOGRAM
-    # log "Recording JVM class histogram"
-    # $JCMD $PID GC.class_histogram > jvm-class-histogram 2>> diagnostics.log
-
-    # UNCOMMENT TO DUMP JVM HEAP
-    # log "Dumping JVM heap"
-    # DISK_SPACE=$(df -Pk . | awk 'NR==2 {print $4}')
-    # DISK_SPACE=$(( $DISK_SPACE / 1024 ))
-    # HEAP_SIZE=$($JCMD $PID GC.heap_info | grep -E --only-matching 'used [0-9]+K' | cut -d' ' -f2 | tr K ' ' | head -n2 | awk '{s+=$1} END {printf "%.0f", s}')
-    # HEAP_SIZE=$(( $HEAP_SIZE / 1024 ))
-    # log "  Estimated heap-file size: ${HEAP_SIZE}MB"
-    # log "  Available disk space: ${DISK_SPACE}MB"
-    # if [ $DISK_SPACE -gt $HEAP_SIZE ]; then
-    #   $JCMD $PID GC.heap_dump -all $(pwd)/jvm-heap.hprof >> diagnostics.log 2>&1
-    # else
-    #   log "  Not enough disk space to dump JVM heap"
-    #   log "  Aborting dump"
-    # fi
-    
+    if [ $RUN_JVM_CLASS_HISTOGRAM -eq 1 ]; then
+      log "Recording JVM class histogram"
+      $JCMD $PID GC.class_histogram -all > jvm-class-histogram 2>> diagnostics.log
+    fi
+    if [ $RUN_JVM_HEAP -eq -1 ]; then
+      DISK_SPACE=$(df -Pk . | awk 'NR==2 {print $4}')
+      DISK_SPACE=$(( $DISK_SPACE / 1024 ))
+      HEAP_SIZE=$($JCMD $PID GC.heap_info | grep -E --only-matching 'used [0-9]+K' | cut -d' ' -f2 | tr K ' ' | head -n2 | awk '{s+=$1} END {printf "%.0f", s}')
+      HEAP_SIZE=$(( $HEAP_SIZE / 1024 ))
+      log "  Estimated heap-file size: ${HEAP_SIZE}MB"
+      log "  Available disk space: ${DISK_SPACE}MB"
+      if [ $DISK_SPACE -gt $HEAP_SIZE ]; then
+        $JCMD $PID GC.heap_dump -all $(pwd)/jvm-heap.hprof >> diagnostics.log 2>&1
+      else
+        log "  Not enough disk space to dump JVM heap"
+        log "  Aborting dump"
+      fi
+    fi
     log "Recording JVM properties"
     $JCMD $PID VM.system_properties > jvm-props 2>> diagnostics.log
     log "Recording JVM flags"
@@ -374,30 +437,28 @@ else
   log "Skipping JVM diagnostics (jcmd utility not found)"
 fi
 
-# ----------------------
-
-if [ $GDB_INSTALLED -eq 1 ]; then
-  if [ $WHOAMI == $PROC_USERNAME -a $YAMA_PTRACE_SCOPE -ne 0 ]; then
-    log "Skipping 'strace' output (prohibited for $WHOAMI by Yama ptrace_scope $YAMA_PTRACE_SCOPE)"
-  elif [ $WHOAMI == 'root' -a $YAMA_PTRACE_SCOPE -eq 3 ]; then
-    log "Skipping 'strace' output (prohibited for root by Yama ptrace_scope $YAMA_PTRACE_SCOPE)"
+if [ $RUN_STRACE -eq 1 ]; then
+  if [ $GDB_INSTALLED -eq 1 ]; then
+    if [ $WHOAMI == $PROC_USERNAME -a $YAMA_PTRACE_SCOPE -ne 0 ]; then
+      log "Skipping 'strace' output (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
+    elif [ $WHOAMI == 'root' -a $YAMA_PTRACE_SCOPE -eq 3 ]; then
+      log "Skipping 'strace' output (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
+    else
+      log "Recording 'strace' output for process $PID (10 seconds)"
+      timeout 20 strace -ff -tt -o $CMD-strace -p $PID >/dev/null 2>&1
+      log "Recording 'strace' summary output for process $PID (10 seconds)"
+      timeout 20 strace -c -o $CMD-strace-summary -p $PID >/dev/null 2>&1
+    fi
   else
-    log "Recording 'strace' output for process $PID (10 seconds)"
-    timeout 10 strace -ff -tt -o $CMD-strace -p $PID >/dev/null 2>&1
-    log "Recording 'strace' summary output for process $PID (10 seconds)"
-    timeout 10 strace -c -o $CMD-strace-summary -p $PID >/dev/null 2>&1
+    log "Skipping 'strace' output (strace package required)"
   fi
-else
-  log "Skipping 'strace' output (strace package required)"
 fi
 
-# ----------------------
-
 if [ $GDB_INSTALLED -eq 1 ]; then
   if [ $WHOAMI == $PROC_USERNAME -a $YAMA_PTRACE_SCOPE -ne 0 ]; then
-    log "Skipping GDB core dump (prohibited for $WHOAMI by Yama ptrace_scope $YAMA_PTRACE_SCOPE)"
+    log "Skipping GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
   elif [ $WHOAMI == 'root' -a $YAMA_PTRACE_SCOPE -eq 3 ]; then
-    log "Skipping GDB core dump (prohibited for root by Yama ptrace_scope $YAMA_PTRACE_SCOPE)"
+    log "Skipping GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
   else
     PROC_MEMORY=$(ps -o vsz= -q $PID)
     PROC_MEMORY=$(( $PROC_MEMORY / 1024 ))
@@ -441,16 +502,12 @@ else
   log "Skipping GDB core dump (gdb package required)"
 fi
 
-# ------------------------------
-
 if [ -e $BINARY ]; then
   log "Creating symbolic link to process's binary"
   ln -s $BINARY
 else
   log "Cannot create symbolic link to process's binary '$BINARY'"
 fi
-
-# ------------------------------
 
 if [ $WHOAMI == 'root' ]; then
   chown $TEMP_DIR_USER:$TEMP_DIR_GROUP *

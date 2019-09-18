@@ -9,7 +9,7 @@ Caplin Platform Diagnostics is made available under an MIT licence.
 
 ## caplin-core-diagnostics.sh
 
-Collates diagnostics for a **crashed** Caplin component that has dumped a core file.
+Collates diagnostics for a crashed Caplin component that has dumped a core file.
 
 The diagnostics collated include all the files Caplin Support require to analyse the core file: the component binary, the core file, and all shared libraries referenced in the core file. For the full list of information collated, see [Information collated](#information-collated), below.
 
@@ -107,7 +107,7 @@ and upload the archive to Caplin Support.
 
 ## caplin-process-diagnostics.sh
 
-Collates diagnostics for a **running** Caplin component, without terminating the component process.
+Collates diagnostics for a running Caplin component, without terminating the component process.
 
 The diagnostics collated include a core dump, thread backtraces, and JVM stack trace (if the component has a JVM). For the full list of information collated, see [Information collated](#information-collated-1), below.
 
@@ -119,55 +119,45 @@ After running the script, log in to Caplin's secure [File Upload Facility](https
 *   Caplin log files for the period of the incident
 *   Caplin configuration files
 
-### Performance
-
-The [ptrace](https://en.wikipedia.org/wiki/Ptrace)-based diagnostic tests below directly affect the performance of the running component:
-
-| Diagnostic             | Duration | Performance Impact on Process |
-|------------------------|----------|-------------------------------|
-| `gdb` thread backtrace | 3s       | Temporarily halted            |
-| `gcore` core dump      | _Note 1_ | Temporarily halted            |
-| `strace`               | 20s      | Slower performance            |
-
-**Note 1**: the [gcore](http://man7.org/linux/man-pages/man1/gcore.1.html) command writes the process's virtual memory to a core file. Its execution time is determined by the size of the process's virtual memory (`ps -o vsz= -q <process-id>`) and the write performance of the host's I/O.
-
 ### Requirements
 
-The most useful diagnostic commands run by `caplin-process-diagnostics.sh` require the `gdb` RPM package (GNU Debugger).
+The most useful diagnostics require the `gdb` RPM package (GNU Debugger).
 
-On [CentOS](https://www.centos.org/)/[RHEL](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux) 6, run the script as the process's user.
 
-On [CentOS](https://www.centos.org/)/[RHEL](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux) 7, run the script as the process's user in the first instance; the script will warn you if some diagnostics require root privileges. From [CentOS](https://www.centos.org/)/[RHEL](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux) 7, the [Yama kernel module](https://www.kernel.org/doc/Documentation/security/Yama.txt) can be configured to prohibit a user from calling `ptrace` to attach to a running process. Affected diagnostics: GDB thread backtrace, GDB core dump, and `strace`.
-
-**Required**:
+**Mandatory requirements**:
 
 *   [CentOS](https://www.centos.org/)/[RHEL](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux) 6 or 7
 *   Write permission to the current directory
 
-**Recommended**:
+**Optional requirements**:
 
-*   `gdb` RPM package (GNU Debugger). Required for GDB backtraces and GDB core dump.
-*   `strace` RPM package. Required for system-call logging.
-*   `jcmd` JDK utility in your executable path. Required for JVM diagnostics.
-*   Free disk space greater than the sum of the process's virtual memory. Required for the GDB core dump.
+*   `gdb` RPM package installed. Required for GDB backtraces and GDB core dump. **Recommended**.
+*   `jcmd` JDK utility in your executable path. Required for JVM diagnostics. **Recommended**.
+*   Free disk space greater than the process's virtual memory. Required for the GDB core dump.
+*   `strace` RPM package installed. Only required if requested by Caplin Support.
 
 ### Usage
 
-This script takes one command-line argument.
+To run the default set of diagnostics, pass the running component's process identifier (PID) as the first command line argument.
 
-**Usage**: `caplin-process-diagnostics.sh <process-id>`
+**Syntax**: `caplin-process-diagnostics.sh [options] pid`
 
-*   `<process-id>`: process identifier (PID) of the running component
+*   `pid`: process identifier of the running component
+*   Options:
+    *   `--jvm-heap-dump`: include the optional JVM heap dump diagnostic. Only include this diagnostic when requested by Caplin Support.
+    *   `--jvm-class-histogram`: include the optional JVM class histogram diagnostic. Only include this diagnostic when requested by Caplin Support.
+    *   `--strace`: include the optional `strace` diagnostic. Only include this diagnostic when requested by Caplin Support.
+    *   `--help`: display help
 
-**Run as**: the process's user in first instance. The script will warn you if root privileges are required for diagnostics that use [ptrace](https://en.wikipedia.org/wiki/Ptrace) (thread backtraces, core dump, and `strace`).
+**Run as**: the process's user or root. On CentOS/RHEL 7 systems, depending on the configuration of the [Yama kernel module](https://www.kernel.org/doc/Documentation/security/Yama.txt), the GNU Debugger (GDB) and `strace` diagnostics may require root privileges.
 
-**Runtime**: 5 minutes
+**Runtime**: 3-5 minutes (2 minutes + _core-dump execution and archival_)
 
 **Output**: `diagnostics-<hostname>-<binary>-<pid>-<timestamp>.tar.gz`
 
 ### Information collated
 
-This script collates the following information:
+Default diagnostics:
 
 | Diagnostic                            | Dependencies         | User     |
 |---------------------------------------|----------------------|----------|
@@ -177,11 +167,11 @@ This script collates the following information:
 | `/proc/sys/kernel/core_pattern`       | -                    | -        |
 | `/proc/sys/kernel/core_uses_pid`      | -                    | -        |
 | `/proc/<pid>/limits`                  | -                    | -        |
-| `top` output for the system           | -                    | -        |
-| `top` output for the process          | -                    | -        |
+| `top` output for the system (30 seconds)| -                    | -        |
+| `top` output for the process (30 seconds)| -                    | -        |
 | `df` output for the process's `<working-dir>/var` directory| - | -      |
 | `free` output                         | -                    | -        |
-| `vmstat` output                       | -                    | -        |
+| `vmstat` output (30 seconds)          | -                    | -        |
 | Caplin `dfw info` output              | Process binary is in a [DFW](https://www.caplin.com/developer/caplin-platform/deployment-framework/)| -        |
 | Caplin `dfw status` output            | Process binary is in a [DFW](https://www.caplin.com/developer/caplin-platform/deployment-framework/)| -        |
 | Caplin `dfw versions` output          | Process binary is in a [DFW](https://www.caplin.com/developer/caplin-platform/deployment-framework/)| -        |
@@ -192,16 +182,39 @@ This script collates the following information:
 | JVM `jcmd <pid> PerfCounter.print` output | `jcmd` JDK command   | _Note 1_ |
 | JVM `jstat -gc <pid>` output          | `jcmd` JDK command       | _Note 1_ |
 | JVM `jstat -gcutil <pid>` output      | `jcmd` JDK command       | _Note 1_ |
-| `strace` output (system-call logging) | `strace` RPM package | _Note 2_ |
-| GDB thread backtraces                 | `gdb` RPM package    | _Note 2_ |
+| 3x GDB thread backtraces, 10 seconds apart| `gdb` RPM package    | _Note 2_ |
 | GDB core-file dump                    | `gdb` RPM package    | _Note 2_ |
 | Core-file backtrace                   | `gdb` RPM package    | -        |
 | Core-file libraries                   | `gdb` RPM package    | -        |
 | Process binary                        | -                    | -        |
 
+Optional diagnostics (only enable if requested by Caplin Support):
+
+| Diagnostic                            | Dependencies         | User     |
+|---------------------------------------|----------------------|----------|
+| JVM `jcmd <pid> GC.heap_dump` output  | `jcmd` JDK command   | _Note 1_ |
+| JVM `jcmd <pid> GC.class_histogram` output  | `jcmd` JDK command| _Note 1_ |
+| `strace` output (system-call logging) | `strace` RPM package | _Note 2_ |
+
 **Note 1**: JVM diagnostics must be run as the process's user. If you run the script as root, then the script uses `sudo` to run the JVM diagnostics as the process's user.
 
-**Note 2**: GDB thread backtraces, GDB core dump, and `strace` can be run as the process's user, unless prohibited from doing so by the kernel Yama module (introduced in CentOS/RHEL 7). The script will advise you if root privileges are required to run these diagnostics.
+**Note 2**: GDB thread backtraces, GDB core dump, and `strace` can be run as the process's user, unless prohibited by the [Yama kernel module](https://www.kernel.org/doc/Documentation/security/Yama.txt) (introduced in CentOS/RHEL 7). The script will advise you if root privileges are required to run these diagnostics.
+
+### Performance impact
+
+The default set of diagnostics includes only two diagnostics that directly impact the performance of the target process:
+
+*   **3x GDB thread backtraces**: the target process is halted temporarily for less than 1 second for each backtrace.
+
+*   **GDB core dump**: the target process is halted temporarily for the time it takes the [gcore](http://man7.org/linux/man-pages/man1/gcore.1.html) command to write the process's virtual memory to a core file. The execution time is determined by the size of the process's virtual memory (`ps -o vsz= -q <process-id>`) and the write performance of the host's I/O.
+
+The optional diagnostics have a potentially greater performance impact and should only be enabled when requested by Caplin Support:
+
+*   **strace**: slows performance of the target process for the duration of the diagnostic (40 seconds).
+
+*   **JVM heap dump**: halts the JVM temporarily for the duration of the diagnostic.
+
+*   **JVM class histogram**: halts the JVM temporarily for the duration of the diagnostic.
 
 ### Example usage
 
@@ -212,8 +225,6 @@ $ ./caplin-process-diagnostics.sh 4972
 
 Caplin Process Diagnostics
 ==========================
-
-Expected runtime 5 minutes
 
 Process ID:      4972
 Process binary:  /home/caplin/dfw1/kits/Liberator/Liberator-7.1.9-313149/bin/rttpd
@@ -247,7 +258,6 @@ Recording JVM properties
 Recording JVM flags
 Recording JVM performance counters
 Recording JVM jstat GC output
-Recording system calls for process 4972 (30 seconds)
 Dumping GDB core file for process 4972
   Estimated core-file size: 2778MB
   Available disk space: 20770MB
@@ -287,27 +297,8 @@ Files collected:
   rttpd.core.4972
   rttpd.core.4972.backtrace.out
   rttpd.core.4972.libs.tar
-  rttpd-strace.4972
-  rttpd-strace.4977
-  rttpd-strace.4978
-  rttpd-strace.4981
-  rttpd-strace.4982
-  rttpd-strace.4983
-  rttpd-strace.4984
-  rttpd-strace.4985
-  rttpd-strace.4986
-  rttpd-strace.4987
-  rttpd-strace.4988
-  rttpd-strace.5006
-  rttpd-strace.5015
-  rttpd-strace.5018
-  rttpd-strace.5019
-  rttpd-strace.5020
-  rttpd-strace.5026
-  rttpd-strace.5031
-  rttpd-strace.5267
-  rttpd-top.out
   top.out
+  top-4972.out
   uname.out
   vmstat.out
 
