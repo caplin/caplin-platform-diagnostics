@@ -200,6 +200,11 @@ if [ -r /sys/fs/selinux/booleans/deny_ptrace ]; then
 else
   SELINUX_DENY_PTRACE=0
 fi
+if command -v getenforce >/dev/null 2>&1; then
+  SELINUX_MODE=$(getenforce)
+else
+  SELINUX_MODE="Disabled"
+fi
 
 
 # Warn the user when specific tests cannot run
@@ -247,7 +252,7 @@ if [ ${#WARNINGS[@]} -gt 0 ]; then
     echo "kernel.yama.ptrace_scope:  ${YAMA_PTRACE_SCOPE}"
   fi
   if [ -r /sys/fs/selinux/booleans/deny_ptrace ]; then
-    echo "SELINUX status:            $(getenforce)"
+    echo "SELINUX mode:              ${SELINUX_MODE}"
     echo "SELINUX deny_ptrace:       ${SELINUX_DENY_PTRACE}"
   fi
   echo
@@ -366,7 +371,7 @@ fi
 
 if [ $GDB_INSTALLED -eq 0 ]; then
   log "Skipping GDB thread backtraces (gdb package required)"
-elif [ $SELINUX_DENY_PTRACE -eq 1 ]; then
+elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping GDB thread backtraces (prohibited by SELINUX deny_ptrace)"
 elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROC_USERNAME ]; then
   log "Skipping GDB thread backtraces (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
@@ -449,7 +454,7 @@ if [ $RUN_STRACE -eq 0 ]; then
   :
 elif ! command -v strace > /dev/null 2>&1; then
   log "Skipping 'strace' output (strace package required)"
-elif [ $SELINUX_DENY_PTRACE -eq 1 ]; then
+elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping 'strace' output (prohibited by SELINUX deny_ptrace)"
 elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROC_USERNAME ]; then
   log "Skipping 'strace' output (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
@@ -465,7 +470,7 @@ fi
 
 if [ $GDB_INSTALLED -eq 0 ]; then
   log "Skipping GDB core dump (gdb package required)"
-elif [ $SELINUX_DENY_PTRACE -eq 1 ]; then
+elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping GDB core dump (prohibited by SELINUX deny_ptrace)"
 elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROC_USERNAME ]; then
   log "Skipping GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
