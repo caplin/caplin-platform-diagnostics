@@ -119,19 +119,25 @@ After running the script, log in to Caplin's secure [File Upload Facility](https
 
 ### Requirements
 
-The most useful diagnostics require the GNU Debugger to be installed (`gdb` RPM package).
+The main dependency is the GNU Debugger (`gdb` package). This is required for generating stack traces and a core dump.
 
+If any requirements are missing when you run the script, the script lists the missing dependencies and asks if you wish to continue. If you choose to continue, the script skips any diagnostics with missing dependencies.
 
-**Mandatory requirements**:
+**All diagnostics**:
 
 *   [CentOS](https://www.centos.org/)/[RHEL](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux) 6 or 7
 *   Write permission to the current directory
 
-**Optional requirements**:
+**Core dump and backtrace diagnostics**:
+*   `gdb` RPM package installed
+*   Free disk space greater than the process's virtual memory
+*   **CentOS/RHEL 7**: [SELINUX](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/selinux_users_and_administrators_guide/index) boolean  `deny_ptrace` set to off (if SELINUX enabled and enforcing).
+*   **CentOS/RHEL 7**: [Yama kernel module](https://www.kernel.org/doc/Documentation/security/Yama.txt) sysctl setting `kernel.yama.ptrace_scope` set to 0, 1, or 2.
 
-*   `gdb` RPM package installed. Required for GDB backtraces and GDB core dump. **Recommended**.
-*   `jcmd` JDK utility in your executable path. Required for JVM diagnostics. **Recommended**.
-*   Free disk space greater than the process's virtual memory. Required for the GDB core dump.
+**JVM diagnostics**:
+*   Java `jcmd` utility. If the Caplin component uses a system-wide JDK installation, then `jcmd` is in your executable path.
+
+**Optional `strace` diagnostic**:
 *   `strace` RPM package installed. Only required if requested by Caplin Support.
 
 ### Usage
@@ -145,9 +151,16 @@ The most useful diagnostics require the GNU Debugger to be installed (`gdb` RPM 
     *   `--strace`: include the optional `strace` diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--help`: display help
 
-**Run as**: the process's user or root. On CentOS/RHEL 7 systems, depending on the configuration of the [Yama kernel module](https://www.kernel.org/doc/Documentation/security/Yama.txt), the GNU Debugger (GDB) and `strace` diagnostics may require root privileges.
+**Run as**:
 
-**Runtime**: 3-5 minutes (2 minutes + _core-dump execution and archival_)
+*   CentOS 6: process's user
+*   CentOS 7:
+    *    `kernel.yama.ptrace_scope=0`: process's user
+    *    `kernel.yama.ptrace_scope=1`: root (required for core dump, thread backtraces, and `strace`)
+    *    `kernel.yama.ptrace_scope=2`: root (required for core dump, thread backtraces, and `strace`)
+    *    `kernel.yama.ptrace_scope=3`: process's user (core dump, thread backtraces, and `strace` prohibited for all users)
+
+**Runtime**: 2-5 minutes (2 minutes + _core-dump execution and archival_)
 
 **Output**: `diagnostics-<hostname>-<binary>-<pid>-<timestamp>.tar.gz`
 
