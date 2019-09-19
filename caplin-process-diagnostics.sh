@@ -398,7 +398,7 @@ if command -v jcmd >/dev/null 2>&1; then
       log "Recording JVM class histogram"
       $JCMD $PID GC.class_histogram -all > jvm-class-histogram 2>> diagnostics.log
     fi
-    if [ $RUN_JVM_HEAP -eq -1 ]; then
+    if [ $RUN_JVM_HEAP -eq 1 ]; then
       DISK_SPACE=$(df -Pk . | awk 'NR==2 {print $4}')
       DISK_SPACE=$(( $DISK_SPACE / 1024 ))
       HEAP_SIZE=$($JCMD $PID GC.heap_info | grep -E --only-matching 'used [0-9]+K' | cut -d' ' -f2 | tr K ' ' | head -n2 | awk '{s+=$1} END {printf "%.0f", s}')
