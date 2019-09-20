@@ -25,22 +25,31 @@
 
 HELP="$(cat << EOF
 
-  Caplin Core-file Diagnostics
-  ============================
+NAME
+  $(basename $0) - run diagnostics on a core file
 
-  Packages a core file for submission to Caplin Support.
-  Run this script on the host on which the core file was dumped,
-  or on a host with the same operating system version.
+SYNOPSIS
+  $(basename $0) binary core
 
-  Usage:        $(basename $0) <binary> <core>
-  Dependencies: gdb package
+    binary:        path to the binary that crashed
+    core:          path to the core file dumped by the binary
 
-  Diagnostics:
-    - Operating system version
-    - Caplin Deployment Framework (DFW) 'versions' report
-    - Core file
-    - Core file backtrace
-    - Core file libraries
+DEPENDENCIES
+  - CentOS/RHEL 6 or 7
+  - GNU Debugger ('gdb' RPM package)
+
+DESCRIPTION
+  Collates diagnostic information for a core file dumped by a
+  crashed Caplin process.
+
+  This script collates the following diagnostics:
+    - Operating system name and version
+    - If the binary is in a Caplin Deployment Framework:
+      - 'dfw versions' output
+    - The binary
+    - The core file
+    - Thread backtrace from the core file
+    - Shared libraries referenced in the core file
 
 EOF
 )"
@@ -153,7 +162,7 @@ gdb $BINARY -c $CORE --quiet \
   -ex "thread apply all bt full" \
   -ex "quit" > /dev/null 2>> diagnostics.log
 
-log "Getting list of libraries referenced by ${CORE_FILENAME}"
+log "Collating libraries referenced by ${CORE_FILENAME} (using GDB)"
 gdb $BINARY -c $CORE --quiet \
   -ex "set confirm off" \
   -ex "set logging file libs-list.out" \
@@ -161,8 +170,6 @@ gdb $BINARY -c $CORE --quiet \
   -ex "set pagination off" \
   -ex "info sharedlibrary" \
   -ex "quit" > /dev/null 2>> diagnostics.log
-
-log "Copying libraries referenced by ${CORE_FILENAME}"
 grep "^0x" ./libs-list.out | awk '{if ($5 != "")print $5}' &> libs-list.txt
 cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chvf ${CORE_FILENAME}.libs.tar &> /dev/null
 
