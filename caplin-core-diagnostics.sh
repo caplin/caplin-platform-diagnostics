@@ -44,6 +44,7 @@ DESCRIPTION
 
   This script collates the following diagnostics:
     - Operating system name and version
+    - 'df' output for the binary's 'var' directory
     - If the binary is in a Caplin Deployment Framework:
       - 'dfw versions' output
     - The binary
@@ -207,6 +208,32 @@ if [ -r /etc/redhat-release ]; then
 fi
 log "Recording 'uname -a' output"
 uname -a > uname.out
+
+if [ ! -z $DFW_ROOT ]; then
+  if [ $BINARY_FILENAME == 'rttpd' -a -d $DFW_ROOT ]; then
+    log "Recording 'df' output for $DFW_ROOT/servers/Liberator/var"
+    df -kh $DFW_ROOT/servers/Liberator/var > df.out
+  elif [ $BINARY_FILENAME == 'transformer' -a -d $DFW_ROOT ]; then
+    log "Recording 'df' output for $DFW_ROOT/servers/Transformer/var"
+    df -kh $DFW_ROOT/servers/Transformer/var > df.out
+  else
+    if [ -d $BINARY/../var ]; then
+      log "Recording 'df' output for $BINARY/../var"
+      df -kh $BINARY/../var > df.out
+    else
+      log "Recording 'df' output for $BINARY"
+      df -kh $BINARY > df.out
+    fi
+  fi
+else
+  if [ -d $BINARY/../var ]; then
+    log "Recording 'df' output for $BINARY/../var"
+    df -kh $BINARY/../var > df.out
+  else
+    log "Recording 'df' output for $BINARY"
+    df -kh $BINARY > df.out
+  fi
+fi
 
 if [ -x "$DFW" ]; then
   log "Recording 'dfw versions' output"
