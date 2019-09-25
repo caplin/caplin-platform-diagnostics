@@ -29,10 +29,10 @@ NAME
   $(basename $0) - run diagnostics on a core file
 
 SYNOPSIS
-  $(basename $0) binary core
+  $(basename $0)  binary  core
 
-    binary:        path to the binary that crashed
-    core:          path to the core file dumped by the binary
+    binary:   path to the binary that crashed
+    core:     path to the core file dumped by the binary
 
 DEPENDENCIES
   - CentOS/RHEL 6 or 7
@@ -54,29 +54,31 @@ DESCRIPTION
 EOF
 )"
 
-if [ $# -ne 2 ]; then
+SHOW_HELP=0
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+  key="$1"
+  case $key in
+      -h|--help)
+      SHOW_HELP=1
+      shift
+      ;;
+      *)
+      POSITIONAL+=("$1")
+      shift
+      ;;
+  esac
+done
+set -- "${POSITIONAL[@]}"
+
+if [ $# -eq 0 ]; then
   printf '%s\n\n' "$HELP"
   exit 1
 fi
 if [ $1 == 'help' -o $1 == '-h' -o $1 == '--help' ]; then
   printf '%s\n\n' "$HELP"
   exit 0
-fi
-for f in $1 $2; do
-  if [ ! -f $f ]; then
-    echo "File $f does not exist or is not a regular file"
-    exit 1
-  fi
-done
-if command -v file >/dev/null 2>&1; then
-  if ! file -b $1 | cut -d, -f1 | grep 'executable' > /dev/null; then
-    echo "File '$1' is not an executable"
-    exit 1
-  fi
-  if ! file -b $2 | cut -d, -f1 | grep 'core file' > /dev/null; then
-    echo "File '$2' is not a core file"
-    exit 1
-  fi
 fi
 if [ ! -w . ]; then
   echo "This script must be run from a writeable directory. Aborting."
@@ -86,6 +88,65 @@ if ! command -v gdb >/dev/null 2>&1; then
   echo "This script requires the GNU Debugger ('gdb' package). Aborting."
   exit 1
 fi
+
+if [ $# -eq 1 ]; then
+  if [ ! -f $1 ]; then
+    echo "File $1 does not exist or is not a regular file"
+    exit 1
+  fi
+  if file -b $1 | cut -d, -f1 | grep 'core file' > /dev/null; then
+    CORE=$(readlink -e $1)
+    # Read the core file type and extract the binary filename
+    EXECFN=$(file --brief $1 | grep -o -E "execfn: '[^']+" | sed -r "s/execfn: '//")
+    if [ ! -z "$EXECFN" ]; then
+      if [ -f $EXECFN ]; then
+        BINARY=$(readlink -e $EXECFN)
+      else
+        echo "Core file $1 contains the location of the crashed binary"
+        echo "Cannot find binary $EXECFN"
+        echo "Usage: $(basename $0) [binary] <core>"
+        echo "       $(basename $0) <core> [binary]"
+        exit 1
+      fi
+    else
+      echo "Core file $1 has not recorded the location of the crashed binary"
+      echo "Please specify both the binary and the core on the command line"
+      echo "Usage: $(basename $0) [binary] <core>"
+      echo "       $(basename $0) <core> [binary]"
+      exit 1
+    fi
+  else
+    echo "Argument $1 is not a core file"
+    echo "Usage: $(basename $0) [binary] <core>"
+    echo "       $(basename $0) <core> [binary]"
+    exit 1
+  fi
+elif [ $# -eq 2 ]; then
+  for f in $1 $2; do
+    if [ ! -f $f ]; then
+      echo "File $f does not exist or is not a regular file"
+      exit 1
+    fi
+  done
+  if file -b $1 | cut -d, -f1 | grep 'core file' > /dev/null; then
+    CORE=$(readlink -e $1)
+  elif file -b $1 | cut -d, -f1 | grep 'executable' > /dev/null; then
+    BINARY=$(readlink -e $1)
+  fi
+  if file -b $2 | cut -d, -f1 | grep 'core file' > /dev/null; then
+    CORE=$(readlink -e $2)
+  elif file -b $2 | cut -d, -f1 | grep 'executable' > /dev/null; then
+    BINARY=$(readlink -e $2)
+  fi
+  if [ -z $BINARY -o -z $CORE ]; then
+    printf '%s\n\n' "$HELP"
+    exit 1
+  fi
+else
+  printf '%s\n\n' "$HELP"
+  exit 1
+fi
+
 
 
 ##
@@ -107,8 +168,6 @@ log () {
   echo "$1" | tee -a diagnostics.log
 }
 
-BINARY=$(readlink -e $1)
-CORE=$(readlink -e $2)
 BINARY_FILENAME=$(basename $BINARY)
 CORE_FILENAME=$(basename $CORE)
 BINARY_DIR=$(dirname $BINARY)
@@ -116,8 +175,9 @@ HOSTNAME=$(hostname -s)
 DFW=$(searchparents $BINARY_DIR dfw)
 if [ ! -z $DFW ]; then
   DFW=$(readlink -e $DFW)
+  DFW_ROOT=$(dirname $DFW)
 fi
-ARCHIVE=diagnostics-${HOSTNAME}-${BINARY_FILENAME}-${CORE_FILENAME}-$(date +%Y%m%d%H%M%S)
+ARCHIVE=diagnostics-${HOSTNAME}-${BINARY_FILENAME}-${CORE_FILENAME//:/}-$(date +%Y%m%d%H%M%S)
 
 if ! mkdir -p $ARCHIVE; then
   echo "Could not create directory $ARCHIVE"
@@ -126,12 +186,14 @@ fi
 TEMP_DIR=$(readlink -e $ARCHIVE)
 cd $TEMP_DIR
 ln -s $BINARY
-ln -s $CORE
+ln -s $CORE ${CORE_FILENAME//:/}
 
 log
 log "Caplin Core-file Diagnostics"
 log "============================"
 log
+log "Core:            ${CORE}"
+log "Binary:          ${BINARY}"
 log "Script temp dir: $(basename ${TEMP_DIR})"
 log
 
@@ -156,7 +218,7 @@ fi
 log "Getting thread backtraces from ${CORE_FILENAME}"
 gdb $BINARY -c $CORE --quiet \
   -ex "set confirm off" \
-  -ex "set logging file ${CORE_FILENAME}.backtrace.out" \
+  -ex "set logging file ${CORE_FILENAME//:/}.backtrace.out" \
   -ex "set logging on" \
   -ex "set pagination off" \
   -ex "thread apply all bt full" \
@@ -171,7 +233,7 @@ gdb $BINARY -c $CORE --quiet \
   -ex "info sharedlibrary" \
   -ex "quit" > /dev/null 2>> diagnostics.log
 grep "^0x" ./libs-list.out | awk '{if ($5 != "")print $5}' &> libs-list.txt
-cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chvf ${CORE_FILENAME}.libs.tar &> /dev/null
+cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chvf ${CORE_FILENAME//:/}.libs.tar &> /dev/null
 
 log
 log "DONE"
