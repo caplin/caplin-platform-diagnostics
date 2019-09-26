@@ -29,10 +29,14 @@ NAME
   $(basename $0) - run diagnostics on a core file
 
 SYNOPSIS
-  $(basename $0)  binary  core
+  $(basename $0)  [binary]  core
+  $(basename $0)  core  [binary]
 
-    binary:   path to the binary that crashed
-    core:     path to the core file dumped by the binary
+    binary:  path to the binary that crashed
+             (Required if the binary is not in the location
+             recorded in the core file)
+
+    core:    path to the core file dumped by the binary
 
 DEPENDENCIES
   - CentOS/RHEL 6 or 7
@@ -77,7 +81,7 @@ if [ $# -eq 0 ]; then
   printf '%s\n\n' "$HELP"
   exit 1
 fi
-if [ $1 == 'help' -o $1 == '-h' -o $1 == '--help' ]; then
+if [ $SHOW_HELP -eq 1 ]; then
   printf '%s\n\n' "$HELP"
   exit 0
 fi
@@ -91,41 +95,44 @@ if ! command -v gdb >/dev/null 2>&1; then
 fi
 
 if [ $# -eq 1 ]; then
+  # One argument (core file)
+  # Try to derive the location of the binary from the core file
   if [ ! -f $1 ]; then
-    echo "File $1 does not exist or is not a regular file"
+    echo "File does not exist or is not a regular file: $1"
     exit 1
   fi
   if file -b $1 | cut -d, -f1 | grep 'core file' > /dev/null; then
     CORE=$(readlink -e $1)
-    # Read the core file type and extract the binary filename
     EXECFN=$(file --brief $1 | grep -o -E "execfn: '[^']+" | sed -r "s/execfn: '//")
-    if [ ! -z "$EXECFN" ]; then
+    if [ -n "$EXECFN" ]; then
       if [ -f $EXECFN ]; then
         BINARY=$(readlink -e $EXECFN)
       else
-        echo "Core file $1 contains the location of the crashed binary"
+        echo "Core file $(basename $1) has recorded the location of the crashed binary"
         echo "Cannot find binary $EXECFN"
-        echo "Usage: $(basename $0) [binary] <core>"
-        echo "       $(basename $0) <core> [binary]"
+        echo "Usage: $(basename $0) [binary] core"
+        echo "       $(basename $0) core [binary]"
         exit 1
       fi
     else
-      echo "Core file $1 has not recorded the location of the crashed binary"
+      echo "Core file $(basename $1) has not recorded the location of the crashed binary"
       echo "Please specify both the binary and the core on the command line"
-      echo "Usage: $(basename $0) [binary] <core>"
-      echo "       $(basename $0) <core> [binary]"
+      echo "Usage: $(basename $0) [binary] core"
+      echo "       $(basename $0) core [binary]"
       exit 1
     fi
   else
-    echo "Argument $1 is not a core file"
-    echo "Usage: $(basename $0) [binary] <core>"
-    echo "       $(basename $0) <core> [binary]"
+    echo "Not a core file: $1"
+    echo "Usage: $(basename $0) [binary] core"
+    echo "       $(basename $0) core [binary]"
     exit 1
   fi
 elif [ $# -eq 2 ]; then
+  # Two arguments
+  # Determine which is the binary and which is the core file
   for f in $1 $2; do
     if [ ! -f $f ]; then
-      echo "File $f does not exist or is not a regular file"
+      echo "File does not exist or is not a regular file: $f"
       exit 1
     fi
   done
@@ -144,10 +151,10 @@ elif [ $# -eq 2 ]; then
     exit 1
   fi
 else
+  # Number of positional arguments > 2
   printf '%s\n\n' "$HELP"
   exit 1
 fi
-
 
 
 ##
@@ -165,6 +172,10 @@ searchparents () {
   done
 }
 
+###
+# Write to STDOUT and diagnostics.log
+# Param 1: log message
+#
 log () {
   echo "$1" | tee -a diagnostics.log
 }
@@ -174,11 +185,28 @@ CORE_FILENAME=$(basename $CORE)
 BINARY_DIR=$(dirname $BINARY)
 HOSTNAME=$(hostname -s)
 DFW=$(searchparents $BINARY_DIR dfw)
-if [ ! -z $DFW ]; then
+if [ -n $DFW ]; then
   DFW=$(readlink -e $DFW)
   DFW_ROOT=$(dirname $DFW)
 fi
 ARCHIVE=diagnostics-${HOSTNAME}-${BINARY_FILENAME}-${CORE_FILENAME//:/}-$(date +%Y%m%d%H%M%S)
+
+# Infer the working directory of the binary.
+# The inference is only accurate if the binary has not been
+# moved from the original location in which it crashed.
+if [ $BINARY_FILENAME == 'rttpd' -a -n $DFW_ROOT ]; then
+  BINARY_WORKING_DIR=$DFW_ROOT/servers/Liberator
+elif [ $BINARY_FILENAME == 'rttpd' -a -z $DFW_ROOT ]; then
+  BINARY_WORKING_DIR=$(readlink -e $BINARY_DIR/..)
+elif [ $BINARY_FILENAME == 'transformer' -a -n $DFW_ROOT ]; then
+  BINARY_WORKING_DIR=$DFW_ROOT/servers/Transformer
+elif [ $BINARY_FILENAME == 'transformer' -a -z $DFW_ROOT ]; then
+  BINARY_WORKING_DIR=$(readlink -e $BINARY_DIR/..)
+elif readlink -e $BINARY_DIR/.. | grep 'DataSource' > /dev/null ; then
+  BINARY_WORKING_DIR=$(readlink -e $BINARY_DIR/..)
+else
+  BINARY_WORKING_DIR=$BINARY_DIR
+fi
 
 if ! mkdir -p $ARCHIVE; then
   echo "Could not create directory $ARCHIVE"
@@ -193,9 +221,10 @@ log
 log "Caplin Core-file Diagnostics"
 log "============================"
 log
+log "Host:            $(hostname)"
 log "Core:            ${CORE}"
 log "Binary:          ${BINARY}"
-log "Script temp dir: $(basename ${TEMP_DIR})"
+log "Script temp dir: ./$(basename ${TEMP_DIR})"
 log
 
 if [ -r /etc/os-release ]; then
@@ -209,33 +238,15 @@ fi
 log "Recording 'uname -a' output"
 uname -a > uname.out
 
-if [ ! -z $DFW_ROOT ]; then
-  if [ $BINARY_FILENAME == 'rttpd' -a -d $DFW_ROOT ]; then
-    log "Recording 'df' output for $DFW_ROOT/servers/Liberator/var"
-    df -kh $DFW_ROOT/servers/Liberator/var > df.out
-  elif [ $BINARY_FILENAME == 'transformer' -a -d $DFW_ROOT ]; then
-    log "Recording 'df' output for $DFW_ROOT/servers/Transformer/var"
-    df -kh $DFW_ROOT/servers/Transformer/var > df.out
-  else
-    if [ -d $BINARY/../var ]; then
-      log "Recording 'df' output for $BINARY/../var"
-      df -kh $BINARY/../var > df.out
-    else
-      log "Recording 'df' output for $BINARY"
-      df -kh $BINARY > df.out
-    fi
-  fi
+if [ -d $BINARY_WORKING_DIR/var ]; then
+  log "Recording 'df' output for $BINARY_WORKING_DIR/var"
+  df $BINARY_WORKING_DIR/var > df.out
 else
-  if [ -d $BINARY/../var ]; then
-    log "Recording 'df' output for $BINARY/../var"
-    df -kh $BINARY/../var > df.out
-  else
-    log "Recording 'df' output for $BINARY"
-    df -kh $BINARY > df.out
-  fi
+  log "Recording 'df' output for $BINARY_WORKING_DIR"
+  df $BINARY_WORKING_DIR > df.out
 fi
 
-if [ -x "$DFW" ]; then
+if [ -n "$DFW" ]; then
   log "Recording 'dfw versions' output"
   $DFW versions > dfw-versions.out 2>&1
 else
@@ -251,7 +262,7 @@ gdb $BINARY -c $CORE --quiet \
   -ex "thread apply all bt full" \
   -ex "quit" > /dev/null 2>> diagnostics.log
 
-log "Collating libraries referenced by ${CORE_FILENAME} (using GDB)"
+log "Collating libraries referenced by ${CORE_FILENAME}"
 gdb $BINARY -c $CORE --quiet \
   -ex "set confirm off" \
   -ex "set logging file libs-list.out" \
@@ -260,7 +271,7 @@ gdb $BINARY -c $CORE --quiet \
   -ex "info sharedlibrary" \
   -ex "quit" > /dev/null 2>> diagnostics.log
 grep "^0x" ./libs-list.out | awk '{if ($5 != "")print $5}' &> libs-list.txt
-cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chvf ${CORE_FILENAME//:/}.libs.tar &> /dev/null
+cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chvf ${CORE_FILENAME//:/}.libs.tar --ignore-failed-read &> /dev/null
 
 log
 log "DONE"
