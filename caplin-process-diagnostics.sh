@@ -177,7 +177,7 @@ CMD=$(basename $BINARY)
 WORKING_DIR=$(pwdx $PID | cut -d' ' -f2)
 CORE=${CMD}.core.${PID}
 DFW=$(searchparents $BINARY_DIR dfw)
-if [ ! -z $DFW ]; then
+if [ -n $DFW ]; then
   DFW=$(readlink -e $DFW)
 fi
 ARCHIVE=diagnostics-${HOSTNAME}-${CMD}-${PID}-$(date +%Y%m%d%H%M%S)
@@ -332,7 +332,7 @@ for i in {1..6}; do
   sleep 5
 done > top-${PID}.out
 
-if [ ! -z $WORKING_DIR ]; then
+if [ -n $WORKING_DIR ]; then
   if [ -d $WORKING_DIR/var ]; then
     log "Recording 'df' output for ${WORKING_DIR}/var"
     df -kh $WORKING_DIR/var > df.out
@@ -358,7 +358,7 @@ else
   log "Skipping 'vmstat' output (procps package required)"
 fi
 
-if [ -x "$DFW" ]; then
+if [ -n "$DFW" ]; then
   log "Recording 'dfw info' output"
   $DFW info > dfw-info.out 2>&1
   log "Recording 'dfw status' output"
