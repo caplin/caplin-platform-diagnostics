@@ -2,16 +2,23 @@
 
 Caplin Platform Diagnostics is a collection of Bash scripts that collect diagnostics on a running or crashed Caplin Platform component.
 
-The scripts automate a series of common Linux diagnostic commands that Caplin Support ask customers to run when raising a support request.
+The scripts automate a series of common Linux diagnostic commands that Caplin Support ask customers to run when raising a support request (see [Send diagnostic information to Caplin Support](https://www.caplin.com/developer/caplin-platform/platform-architecture/get-information-about-a-failed-platform-component) on the Caplin website).
 
 Caplin Platform Diagnostics is made available under an MIT licence.
+
+**Contents**:
+
+* [caplin-core-diagnostics.sh](#caplin-core-diagnosticssh)
+* [caplin-process-diagnostics.sh](#caplin-process-diagnosticssh)
 
 
 ## caplin-core-diagnostics.sh
 
-Collates diagnostics for a crashed Caplin component that has dumped a core file.
+This script collates diagnostics for a crashed Caplin component that has dumped a core file.
 
 The diagnostics collated include all the files Caplin Support require to analyse the core file: the component binary, the core file, and all shared libraries referenced in the core file. For the full list of information collated, see [Information collated](#information-collated), below.
+
+Run this script on the crashed component's host, or, if this is not possible, on an identically configured host (same operating system and Java versions).
 
 After running the script, log in to Caplin's secure [File Upload Facility](https://www.caplin.com/account/uploads) and upload the following files:
 
@@ -30,14 +37,14 @@ This script has the following requirements:
 *   [CentOS](https://www.centos.org/)/[RHEL](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux) 6 or 7
 *   GNU Debugger (`gdb` RPM package)
 *   Write permission to the current directory
-*   Run on the crashed component's host or on an identically configured host
+*   Run on the crashed component's host or, if this is not possible, on an identically configured host (same operating system and Java versions)
 
 ### Usage
 
-**Syntax**: `caplin-process-diagnostics.sh <binary> <core-file>`
+**Syntax**: `caplin-process-diagnostics.sh core [binary]`
 
-*   `<binary>`: path to the crashed process's binary
-*   `<core-file>`: path to the core-file dumped by the crashed process
+*   `core`: path to the core file dumped by the crashed process.
+*   `binary`: path to the crashed process's binary. Required if the binary is not in the location recorded in the core file, or the location of the binary has not been recorded in the core file.
 
 **Run as**: any user
 
@@ -54,6 +61,7 @@ This script collates the following information:
 | `/etc/os-release`                            | -                 | -    |
 | `/etc/redhat-release`                        | -                 | -    |
 | `uname -a` output                            | -                 | -    |
+| `df` output for binary's 'var' directory     | -                 | -    |
 | Caplin `dfw versions` output                 | Binary is in a [DFW](https://www.caplin.com/developer/caplin-platform/deployment-framework/) | -    |
 | Core file                                    | -                 | -    |
 | Core file backtrace                          | `gdb` RPM package | -    |
@@ -70,11 +78,15 @@ $ ./caplin-core-diagnostics.sh ~/dfw1/servers/Liberator/bin/rttpd ~/dfw1/servers
 Caplin Core-file Diagnostics
 ============================
 
+Host:            server1
+Core:            /home/caplin/dfw1/servers/Liberator/core.4972
+Binary:          /home/caplin/dfw1/servers/Liberator/bin/rttpd
 Script temp dir: diagnostics-server1-rttpd-core.4972-20190916104354
 
 Recording /etc/os-release
 Recording /etc/redhat-release
 Recording 'uname -a' output
+Recording 'df' output for /home/caplin/dfw1/servers/Liberator/var
 Recording 'dfw versions' output
 Getting thread backtraces from core.4972
 Getting list of libraries referenced by core.4972
@@ -105,7 +117,7 @@ and upload the archive to Caplin Support.
 
 ## caplin-process-diagnostics.sh
 
-Collates diagnostics for a running Caplin component, without terminating the component process.
+This script collates diagnostics for a running Caplin component, without terminating the component process.
 
 The diagnostics collated include a core dump, thread backtraces, and JVM stack trace (if the component has a JVM). For the full list of information collated, see [Information collated](#information-collated-1), below.
 
@@ -146,8 +158,8 @@ If any requirements are missing when you run the script, the script lists the mi
 
 *   `pid`: process identifier of the running component
 *   Options:
-    *   `--jvm-heap-dump`: include the optional JVM heap dump diagnostic. Only include this diagnostic when requested by Caplin Support.
-    *   `--jvm-class-histogram`: include the optional JVM class histogram diagnostic. Only include this diagnostic when requested by Caplin Support.
+    *   `--jvm-heap-dump`: include the optional JVM heap dump diagnostic. Halts the JVM temporarily for the duration of the diagnostic. Only include this diagnostic when requested by Caplin Support.
+    *   `--jvm-class-histogram`: include the optional JVM class histogram diagnostic. Halts the JVM temporarily for the duration of the diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--strace`: include the optional `strace` diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--help`: display help
 
