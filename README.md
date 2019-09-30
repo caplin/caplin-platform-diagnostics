@@ -35,7 +35,7 @@ After running the script, log in to Caplin's secure [File Upload Facility](https
 This script has the following requirements:
 
 *   [CentOS](https://www.centos.org/)/[RHEL](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux) 6 or 7
-*   GNU Debugger (`gdb` RPM package)
+*   GNU Debugger (`gdb` RPM package).
 *   Write permission to the current directory
 *   Run on the crashed component's host or, if this is not possible, on an identically configured host (same operating system and Java versions)
 
@@ -81,6 +81,7 @@ Caplin Core-file Diagnostics
 Host:            server1
 Core:            /home/caplin/dfw1/servers/Liberator/core.4972
 Binary:          /home/caplin/dfw1/servers/Liberator/bin/rttpd
+GDB installed:   1
 Script temp dir: diagnostics-server1-rttpd-core.4972-20190916104354
 
 Recording /etc/os-release

@@ -49,12 +49,13 @@ DESCRIPTION
   This script collates the following diagnostics:
     - Operating system name and version
     - 'df' output for the binary's 'var' directory
-    - If the binary is in a Caplin Deployment Framework:
-      - 'dfw versions' output
     - The binary
     - The core file
-    - Thread backtrace from the core file
-    - Shared libraries referenced in the core file
+    - If the binary is in a Caplin Deployment Framework:
+      - 'dfw versions' output
+    - If the GNU Debugger (GDB) is installed:
+      - Thread backtrace from the core file
+      - Shared libraries referenced in the core file
 
 EOF
 )"
@@ -89,10 +90,10 @@ if [ ! -w . ]; then
   echo "This script must be run from a writeable directory. Aborting."
   exit 1
 fi
-if ! command -v gdb >/dev/null 2>&1; then
-  echo "This script requires the GNU Debugger ('gdb' package). Aborting."
-  exit 1
-fi
+# if ! command -v gdb >/dev/null 2>&1; then
+#   echo "This script requires the GNU Debugger ('gdb' package). Aborting."
+#   exit 1
+# fi
 
 if [ $# -eq 1 ]; then
   # One argument (core file)
@@ -190,6 +191,11 @@ if [ -n $DFW ]; then
   DFW_ROOT=$(dirname $DFW)
 fi
 ARCHIVE=diagnostics-${HOSTNAME}-${BINARY_FILENAME}-${CORE_FILENAME//:/}-$(date +%Y%m%d%H%M%S)
+if command -v gdb >/dev/null 2>&1; then
+  GDB_INSTALLED=1
+else
+  GDB_INSTALLED=0
+fi
 
 # Infer the working directory of the binary.
 # The inference is only accurate if the binary has not been
@@ -208,6 +214,30 @@ else
   BINARY_WORKING_DIR=$BINARY_DIR
 fi
 
+if [ $GDB_INSTALLED -eq 0 ]; then
+  echo
+  echo "The GNU Debugger (GDB) is not installed."
+  echo
+  echo "This script uses GDB to collate shared libraries referenced"
+  echo "in the core file. Caplin Support require these libraries"
+  echo "to analyse the core file."
+  echo
+  echo "We recommend that you exit the script and install the 'gdb' package."
+  echo
+  echo "If you can't install the 'gdb' package, continue running the script"
+  echo "and submit the diagnostics to Caplin Support. After you submit the"
+  echo "diagnostics, Caplin Support will contact you with details of how"
+  echo "to collect the required libraries manually."
+  echo
+  read -p "Continue without installing GDB? [Y/N]: " RESPONSE
+  if [ $RESPONSE != 'y' -a $RESPONSE != 'Y' ]; then
+    echo
+    exit 1
+  fi
+  echo
+fi
+
+
 if ! mkdir -p $ARCHIVE; then
   echo "Could not create directory $ARCHIVE"
   exit 1
@@ -224,6 +254,7 @@ log
 log "Host:            $(hostname)"
 log "Core:            ${CORE}"
 log "Binary:          ${BINARY}"
+log "GDB installed:   ${GDB_INSTALLED}"
 log "Script temp dir: ./$(basename ${TEMP_DIR})"
 log
 
@@ -253,25 +284,33 @@ else
   log "Skipping Deployment Framework output (no Deployment Framework found)"
 fi
 
-log "Getting thread backtraces from ${CORE_FILENAME}"
-gdb $BINARY -c $CORE --quiet \
-  -ex "set confirm off" \
-  -ex "set logging file ${CORE_FILENAME//:/}.backtrace.out" \
-  -ex "set logging on" \
-  -ex "set pagination off" \
-  -ex "thread apply all bt full" \
-  -ex "quit" > /dev/null 2>> diagnostics.log
+if [ $GDB_INSTALLED -eq 1 ]; then
+  log "Getting thread backtraces from ${CORE_FILENAME}"
+  gdb $BINARY -c $CORE --quiet \
+    -ex "set confirm off" \
+    -ex "set logging file ${CORE_FILENAME//:/}.backtrace.out" \
+    -ex "set logging on" \
+    -ex "set pagination off" \
+    -ex "thread apply all bt full" \
+    -ex "quit" > /dev/null 2>> diagnostics.log
+else
+  log "Skipping core-file thread backtraces (GDB not installed)"
+fi
 
-log "Collating libraries referenced by ${CORE_FILENAME}"
-gdb $BINARY -c $CORE --quiet \
-  -ex "set confirm off" \
-  -ex "set logging file libs-list.out" \
-  -ex "set logging on" \
-  -ex "set pagination off" \
-  -ex "info sharedlibrary" \
-  -ex "quit" > /dev/null 2>> diagnostics.log
-grep "^0x" ./libs-list.out | awk '{if ($5 != "")print $5}' &> libs-list.txt
-cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chvf ${CORE_FILENAME//:/}.libs.tar --ignore-failed-read &> /dev/null
+if [ $GDB_INSTALLED -eq 1 ]; then
+  log "Collating libraries referenced by ${CORE_FILENAME}"
+  gdb $BINARY -c $CORE --quiet \
+    -ex "set confirm off" \
+    -ex "set logging file libs-list.out" \
+    -ex "set logging on" \
+    -ex "set pagination off" \
+    -ex "info sharedlibrary" \
+    -ex "quit" > /dev/null 2>> diagnostics.log
+  grep "^0x" ./libs-list.out | awk '{if ($5 != "")print $5}' &> libs-list.txt
+  cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chvf ${CORE_FILENAME//:/}.libs.tar --ignore-failed-read &> /dev/null
+else
+  log "Skipping core-file shared libraries (GDB not installed)"
+fi
 
 log
 log "DONE"
