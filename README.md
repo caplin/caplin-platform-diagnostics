@@ -35,7 +35,7 @@ After running the script, log in to Caplin's secure [File Upload Facility](https
 This script has the following requirements:
 
 *   [CentOS](https://www.centos.org/)/[RHEL](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux) 6 or 7
-*   GNU Debugger (`gdb` RPM package)
+*   GNU Debugger (`gdb` RPM package).
 *   Write permission to the current directory
 *   Run on the crashed component's host or, if this is not possible, on an identically configured host (same operating system and Java versions)
 
@@ -44,7 +44,7 @@ This script has the following requirements:
 **Syntax**: `caplin-process-diagnostics.sh core [binary]`
 
 *   `core`: path to the core file dumped by the crashed process.
-*   `binary`: path to the crashed process's binary. Required if the binary is not in the location recorded in the core file, or the location of the binary has not been recorded in the core file.
+*   `binary`: path to the crashed process's binary. Defaults to the path of the binary recorded in the core file.
 
 **Run as**: any user
 
@@ -73,7 +73,7 @@ This script collates the following information:
 The example below collates diagnostics for a core file, `core.4972`, dumped by a Liberator binary, `rttpd`:
 
 ```console
-$ ./caplin-core-diagnostics.sh ~/dfw1/servers/Liberator/bin/rttpd ~/dfw1/servers/Liberator/core.4972
+$ ./caplin-core-diagnostics.sh ~/dfw1/servers/Liberator/core.4972
 
 Caplin Core-file Diagnostics
 ============================
@@ -81,6 +81,7 @@ Caplin Core-file Diagnostics
 Host:            server1
 Core:            /home/caplin/dfw1/servers/Liberator/core.4972
 Binary:          /home/caplin/dfw1/servers/Liberator/bin/rttpd
+GDB installed:   1
 Script temp dir: diagnostics-server1-rttpd-core.4972-20190916104354
 
 Recording /etc/os-release
