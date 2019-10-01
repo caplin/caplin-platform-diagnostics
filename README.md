@@ -44,7 +44,7 @@ This script has the following requirements:
 **Syntax**: `caplin-process-diagnostics.sh core [binary]`
 
 *   `core`: path to the core file dumped by the crashed process.
-*   `binary`: path to the crashed process's binary. Required if the binary is not in the location recorded in the core file, or the location of the binary has not been recorded in the core file.
+*   `binary`: path to the crashed process's binary. Defaults to the path of the binary recorded in the core file.
 
 **Run as**: any user
 
@@ -73,7 +73,7 @@ This script collates the following information:
 The example below collates diagnostics for a core file, `core.4972`, dumped by a Liberator binary, `rttpd`:
 
 ```console
-$ ./caplin-core-diagnostics.sh ~/dfw1/servers/Liberator/bin/rttpd ~/dfw1/servers/Liberator/core.4972
+$ ./caplin-core-diagnostics.sh ~/dfw1/servers/Liberator/core.4972
 
 Caplin Core-file Diagnostics
 ============================
