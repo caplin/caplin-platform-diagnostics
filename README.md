@@ -274,7 +274,11 @@ Recording 'dfw versions' output
 2/3: Dumping GDB thread backtraces for process 4972
   Sleeping for 10 seconds...
 3/3: Dumping GDB thread backtraces for process 4972
-Recording JVM stack trace
+1/3: Dumping JVM stack trace for process 4972
+  Sleeping for 10 seconds...
+2/3: Dumping JVM stack trace for process 4972
+  Sleeping for 10 seconds...
+3/3: Dumping JVM stack trace for process 4972
 Recording JVM heap info
 Recording JVM properties
 Recording JVM flags

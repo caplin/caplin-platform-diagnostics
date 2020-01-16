@@ -402,8 +402,14 @@ if command -v jcmd >/dev/null 2>&1; then
     else
       JCMD="jcmd"
     fi
-    log "Recording JVM stack trace"
-    $JCMD $PID Thread.print > jvm-stacktrace 2>> diagnostics.log
+    for i in {1..3}; do
+      log "${i}/3: Dumping JVM stack trace for process $PID"
+      $JCMD $PID Thread.print -l > jvm-stacktrace-$(date +%Y%m%d%H%M%S).out 2>> diagnostics.log
+      if [ $i -lt 3 ]; then
+        log "  Sleeping for 10 seconds..."
+        sleep 10
+      fi
+    done
     log "Recording JVM heap info"
     $JCMD $PID GC.heap_info > jvm-heapinfo 2>> diagnostics.log
     if [ $RUN_JVM_CLASS_HISTOGRAM -eq 1 ]; then
