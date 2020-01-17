@@ -41,7 +41,7 @@ This script has the following requirements:
 
 ### Usage
 
-**Syntax**: `caplin-process-diagnostics.sh core [binary]`
+**Syntax**: `caplin-core-diagnostics.sh core [binary]`
 
 *   `core`: path to the core file dumped by the crashed process.
 *   `binary`: path to the crashed process's binary. Defaults to the path of the binary recorded in the core file.
@@ -159,7 +159,7 @@ If any requirements are missing when you run the script, the script lists the mi
 
 *   `pid`: process identifier of the running component
 *   Options:
-    *   `--jvm-heap-dump`: include the optional JVM heap dump diagnostic. Halts the JVM temporarily for the duration of the diagnostic. Only include this diagnostic when requested by Caplin Support.
+    *   `--jvm-heap`: include the optional JVM heap dump diagnostic. Halts the JVM temporarily for the duration of the diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--jvm-class-histogram`: include the optional JVM class histogram diagnostic. Halts the JVM temporarily for the duration of the diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--strace`: include the optional `strace` diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--help`: display help
