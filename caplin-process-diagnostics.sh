@@ -488,7 +488,7 @@ else
 fi
 
 if [ $RUN_GCORE -eq 0 ]; then
-  # Fail silently (gcore diagnostic is optiona)
+  # Fail silently (gcore diagnostic is optional)
   :
 elif [ $GDB_INSTALLED -eq 0 ]; then
   log "Skipping GDB core dump (gdb package required)"
