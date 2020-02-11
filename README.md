@@ -8,13 +8,40 @@ Caplin Platform Diagnostics is made available under an MIT licence.
 
 **Contents**:
 
-* [caplin-corefile-diagnostics.sh](#caplin-corefile-diagnosticssh)
-* [caplin-process-diagnostics.sh](#caplin-process-diagnosticssh)
+* [Quick start](#quick-start)
+* [Running diagnostics on a core file](#running-diagnostics-on-a-core-file)
+* [Running diagnostics on a process](#running-diagnostics-on-a-process)
 
+## Quick start
 
-## caplin-corefile-diagnostics.sh
+**To run diagnostics on a process, follow the steps below:**
 
-This script collates diagnostics for a crashed Caplin component that has dumped a core file.
+1.  Install the gdb package if it is not already installed:
+
+    ```
+    $ sudo yum install gdb
+    ```
+
+1.  Run one of the commands below:
+
+    *   Production environments (run time 20 seconds):
+
+        ```
+        $ ./caplin-process-diagnostics.sh <pid>
+        ```
+
+    *   Non-production environments:
+
+        ```
+        $ ./caplin-process-diagnostics.sh --gcore <pid>
+        ```
+        
+
+The additional run time required by the `--gcore` option is dependent on the size of the process's virtual memory and the speed at which the host can write the process's virtual memory to disk. 
+
+## Running diagnostics on a core file
+
+The `caplin-corefile-diagnostics.sh` script collates diagnostics for a core file dumped by a crashed Caplin Platform component.
 
 The diagnostics collated include all the files Caplin Support require to analyse the core file: the component binary, the core file, and all shared libraries referenced in the core file. For the full list of information collated, see [Information collated](#information-collated), below.
 
@@ -116,9 +143,9 @@ and upload the archive to Caplin Support.
 ```
 
 
-## caplin-process-diagnostics.sh
+## Running diagnostics on a process
 
-This script collates diagnostics for a running Caplin component, without terminating the component process.
+The `caplin-process-diagnostics.sh` script collates diagnostics for a process without terminating the process.
 
 Script run-time is 20s for the default set of diagnostics. Optional diagnostics take longer, and their timing can be variable. For example, the run time for the optional GDB core dump (`--gcore`) depends on the size of the target process in memory, and the host's disk I/O and CPU performance.
 
@@ -161,7 +188,7 @@ If any requirements are missing when you run the script, the script lists the mi
 
 *   `pid`: process identifier of the running component
 *   Options:
-    *   `--gcore`: include the optional GDB core file dump. Only include this diagnostic when requested by Caplin Support.
+    *   `--gcore`: include the optional GDB core file dump diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--jvm-heap`: include the optional JVM heap dump diagnostic. Halts the JVM temporarily for the duration of the diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--jvm-class-histogram`: include the optional JVM class histogram diagnostic. Halts the JVM temporarily for the duration of the diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--strace`: include the optional `strace` diagnostic. Only include this diagnostic when requested by Caplin Support.
@@ -169,12 +196,12 @@ If any requirements are missing when you run the script, the script lists the mi
 
 **Run as**:
 
-*   CentOS 6: process's user
+*   CentOS 6: the process's user
 *   CentOS 7:
-    *    `kernel.yama.ptrace_scope=0`: process's user
+    *    `kernel.yama.ptrace_scope=0`: the process's user
     *    `kernel.yama.ptrace_scope=1`: root (required for core dump, thread backtraces, and `strace`)
     *    `kernel.yama.ptrace_scope=2`: root (required for core dump, thread backtraces, and `strace`)
-    *    `kernel.yama.ptrace_scope=3`: process's user (core dump, thread backtraces, and `strace` prohibited for all users)
+    *    `kernel.yama.ptrace_scope=3`: the process's user (core dump, thread backtraces, and `strace` prohibited for all users)
 
 **Runtime**: 20s for the default set of diagnostics
 
