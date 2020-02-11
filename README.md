@@ -252,10 +252,9 @@ Caplin Process Diagnostics
 Process ID:      4972
 Process binary:  /home/caplin/dfw1/kits/Liberator/Liberator-7.1.9-313149/bin/rttpd
 
-Script user:     root
+Script user:     same user as process 4972
 Script temp dir: ./diagnostics-server1-rttpd-4972-20190916102608
 
-Recording /etc/os-release
 Recording /etc/redhat-release
 Recording 'uname -a' output
 Recording /proc/sys/kernel/core_pattern
@@ -304,10 +303,6 @@ Files collected:
   jvm-stacktrace-20190916102810.out
   jvm-stacktrace-20190916102811.out
   jvm-stacktrace-20190916102812.out
-  jvm-stacktrace
-  libs-list.out
-  libs-list.txt
-  os-release
   proc-4972-limits
   proc-sys-kernel-core_pattern
   proc-sys-kernel-core_uses_pid
@@ -315,8 +310,8 @@ Files collected:
   rttpd-backtrace-20190916102806.out
   rttpd-backtrace-20190916102808.out
   rttpd-backtrace-20190916102809.out
-  top.out
   top-4972.out
+  top.out
   uname.out
   vmstat.out
 
