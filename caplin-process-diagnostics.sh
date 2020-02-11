@@ -45,11 +45,11 @@ DESCRIPTION
   This script captures the following diagnostics:
     - Operating system name and version
     - Process limits
-    - 'top' output for the system (30 seconds)
-    - 'top' output for the process (30 seconds)
+    - 'top' output for the system (5 seconds)
+    - 'top' output for the process (5 seconds)
     - 'df' output for the process's <working-dir>/var directory
     - 'free' output
-    - 'vmstat' output (30 seconds)
+    - 'vmstat' output (5 seconds)
     - If the process's binary is in a Caplin Deployment Framework:
       - 'dfw info' output
       - 'dfw status' output
@@ -63,13 +63,13 @@ DESCRIPTION
       - 'jstat -gc <pid>' output
       - 'jstat -gcutil <pid>' output
     - If the GNU Debugger is installed:
-      - 3x thread backtraces (10 seconds apart)
-      - Core dump
-      - Thread backtrace for core dump
-      - Copy of shared libraries referenced in the core dump
+      - GDB thread backtrace
 
 OPTIONS
   -h --help     Display this message
+
+  --gcore       Include the optional GDB core dump (gcore)
+                Enable only if requested by Caplin Support
 
   --strace      Include the optional strace diagnostic.
                 Enable only if requested by Caplin Support.
@@ -87,6 +87,7 @@ EOF
 RUN_STRACE=0
 RUN_JVM_HEAP=0
 RUN_JVM_CLASS_HISTOGRAM=0
+RUN_GCORE=0
 SHOW_HELP=0
 POSITIONAL=()
 while [[ $# -gt 0 ]]
@@ -107,6 +108,10 @@ do
       ;;
       --jvm-class-histogram)
       RUN_JVM_CLASS_HISTOGRAM=1
+      shift
+      ;;
+      --gcore)
+      RUN_GCORE=1
       shift
       ;;
       *)
@@ -136,12 +141,12 @@ fi
 
 PID=$1
 WHOAMI=$(whoami)
-PROC_USER_ID=$(stat -c %u /proc/${PID})
-PROC_USERNAME=$(stat -c %U /proc/${PID})
-PROC_MEMORY=$(ps -o vsz= -q $PID)
-PROC_MEMORY=$(( $PROC_MEMORY / 1024 ))
-if [ $WHOAMI != 'root' -a $WHOAMI != $PROC_USERNAME ]; then
-  echo "This script must be run as root (recommended) or the same user as process $PID ($PROC_USERNAME)"
+PROCESS_USER_ID=$(stat -c %u /proc/${PID})
+PROCESS_USERNAME=$(stat -c %U /proc/${PID})
+PROCESS_MEMORY=$(ps -o vsz= -q $PID)
+PROCESS_MEMORY=$(( $PROCESS_MEMORY / 1024 ))
+if [ $WHOAMI != 'root' -a $WHOAMI != $PROCESS_USERNAME ]; then
+  echo "This script must be run as root (recommended) or the same user as process $PID ($PROCESS_USERNAME)"
   exit 1
 fi
 
@@ -183,7 +188,7 @@ fi
 ARCHIVE=diagnostics-${HOSTNAME}-${CMD}-${PID}-$(date +%Y%m%d%H%M%S)
 if [ $WHOAMI == 'root' ]; then
   # Use the process user's JAVA_HOME
-  export JAVA_HOME=$(su -l -c 'echo $JAVA_HOME' $PROC_USERNAME)
+  export JAVA_HOME=$(su -l -c 'echo $JAVA_HOME' $PROCESS_USERNAME)
 fi
 if command -v gdb >/dev/null 2>&1; then
   GDB_INSTALLED=1
@@ -210,14 +215,19 @@ fi
 # Warn the user when specific tests cannot run
 declare -a WARNINGS
 if [ $GDB_INSTALLED -eq 0 ]; then
-  WARNINGS+=("GDB thread backtrace (requires 'gdb' package)" "GDB core dump (requires 'gdb' package)")
+  WARNINGS+=("GDB thread backtrace (requires 'gdb' package)")
+  if [ $RUN_GCORE -eq 1 ]; then
+    WARNINGS+=("GDB core dump (requires 'gdb' package)")
+  fi
 fi
 if [ $SELINUX_DENY_PTRACE -eq 1 ]; then
   if [ $RUN_STRACE -eq 1 ]; then
     WARNINGS+=("strace (prohibited by SELINUX deny_ptrace)")
   fi
   WARNINGS+=("GDB thread backtrace (prohibited by SELINUX deny_ptrace)")
-  WARNINGS+=("GDB core dump (prohibited by SELINUX deny_ptrace)")
+  if [ $RUN_GCORE -eq 1 ]; then
+    WARNINGS+=("GDB core dump (prohibited by SELINUX deny_ptrace)")
+  fi
 fi
 if ! command -v strace >/dev/null 2>&1; then
   if [ $RUN_STRACE -eq 1 ]; then
@@ -225,21 +235,25 @@ if ! command -v strace >/dev/null 2>&1; then
   fi
 fi
 if [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
-  WARNINGS+=("GDB thread backtrace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
-  WARNINGS+=("GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+  WARNINGS+=("GDB thread backtrace (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)")
+  if [ $RUN_GCORE -eq 1 ]; then
+    WARNINGS+=("GDB core dump (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)")
+  fi
   if [ $RUN_STRACE -eq 1 ]; then
-    WARNINGS+=("strace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    WARNINGS+=("strace (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)")
   fi
 fi
 if [ $YAMA_PTRACE_SCOPE -gt 0 -a $YAMA_PTRACE_SCOPE -lt 3 -a $WHOAMI != 'root' ]; then
-  WARNINGS+=("GDB thread backtrace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
-  WARNINGS+=("GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+  WARNINGS+=("GDB thread backtrace (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)")
+  if [ $RUN_GCORE -eq 1 ]; then
+    WARNINGS+=("GDB core dump (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)")
+  fi
   if [ $RUN_STRACE -eq 1 ]; then
-    WARNINGS+=("strace (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)")
+    WARNINGS+=("strace (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)")
   fi
 fi
-if [ $DISK_SPACE -lt $PROC_MEMORY ]; then
-  WARNINGS+=("GDB core dump (insufficient free disk space -- need at least ${PROC_MEMORY}MB)")
+if [ $DISK_SPACE -lt $PROCESS_MEMORY ]; then
+  WARNINGS+=("GDB core dump (insufficient free disk space -- need at least ${PROCESS_MEMORY}MB)")
 fi
 if ! command -v jcmd >/dev/null 2>&1; then
   WARNINGS+=("JVM diagnostics (jcmd command not found in executable path)")
@@ -247,7 +261,7 @@ fi
 if [ ${#WARNINGS[@]} -gt 0 ]; then
   echo
   echo "Script user:               ${WHOAMI}"
-  echo "Process user:              ${PROC_USERNAME}"
+  echo "Process user:              ${PROCESS_USERNAME}"
   if [ -r /proc/sys/kernel/yama/ptrace_scope ]; then
     echo "kernel.yama.ptrace_scope:  ${YAMA_PTRACE_SCOPE}"
   fi
@@ -290,7 +304,7 @@ log "Process binary:  ${BINARY}"
 log
 if [ $WHOAMI == 'root' ]; then
   log "Script user:     root"
-elif [ $WHOAMI == $PROC_USERNAME ]; then
+elif [ $WHOAMI == $PROCESS_USERNAME ]; then
   log "Script user:     same user as process $PID"
 fi
 log "Script temp dir: ./$(basename ${TEMP_DIR})"
@@ -316,20 +330,20 @@ done
 log "Recording /proc/$PID/limits"
 cat /proc/$PID/limits > proc-${PID}-limits
 
-log "Recording 'top' output (30 seconds)"
-for i in {1..6}; do
+log "Recording 'top' output (5 seconds)"
+for i in {1..5}; do
   echo
   echo
   top -b -n 1
-  sleep 5
+  sleep 1
 done > top.out
 
-log "Recording 'top' output for process $PID (30 seconds)"
-for i in {1..6}; do
+log "Recording 'top' output for process $PID (5 seconds)"
+for i in {1..3}; do
   echo
   echo
   top -H -p $PID -b -n 1
-  sleep 5
+  sleep 1
 done > top-${PID}.out
 
 if [ -n $WORKING_DIR ]; then
@@ -352,8 +366,8 @@ else
 fi
 
 if command -v vmstat >/dev/null 2>&1; then
-  log "Recording 'vmstat' output (30 seconds)"
-  vmstat -S m 1 30 > vmstat.out
+  log "Recording 'vmstat' output (5 seconds)"
+  vmstat -S m 1 5 > vmstat.out
 else
   log "Skipping 'vmstat' output (procps package required)"
 fi
@@ -373,10 +387,10 @@ if [ $GDB_INSTALLED -eq 0 ]; then
   log "Skipping GDB thread backtraces (gdb package required)"
 elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping GDB thread backtraces (prohibited by SELINUX deny_ptrace)"
-elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROC_USERNAME ]; then
-  log "Skipping GDB thread backtraces (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
+elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROCESS_USERNAME ]; then
+  log "Skipping GDB thread backtraces (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
-  log "Skipping GDB thread backtraces (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
+  log "Skipping GDB thread backtraces (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 else
   for i in {1..3}; do
     log "${i}/3: Dumping GDB thread backtraces for process $PID"
@@ -389,8 +403,8 @@ else
       -ex "detach" \
       -ex "quit" > /dev/null 2>> diagnostics.log
     if [ $i -lt 3 ]; then
-      log "  Sleeping for 10 seconds..."
-      sleep 10
+      log "  Sleeping for 1 second..."
+      sleep 1
     fi
   done
 fi
@@ -398,7 +412,7 @@ fi
 if command -v jcmd >/dev/null 2>&1; then
   if jcmd -l | grep "^$PID " > /dev/null 2>&1; then
     if [ $WHOAMI == 'root' ]; then
-      JCMD="sudo -u $PROC_USERNAME $(which jcmd)"
+      JCMD="sudo -u $PROCESS_USERNAME $(which jcmd)"
     else
       JCMD="jcmd"
     fi
@@ -406,8 +420,8 @@ if command -v jcmd >/dev/null 2>&1; then
       log "${i}/3: Dumping JVM stack trace for process $PID"
       $JCMD $PID Thread.print -l > jvm-stacktrace-$(date +%Y%m%d%H%M%S).out 2>> diagnostics.log
       if [ $i -lt 3 ]; then
-        log "  Sleeping for 10 seconds..."
-        sleep 10
+        log "  Sleeping for 1 second..."
+        sleep 1
       fi
     done
     log "Recording JVM heap info"
@@ -438,7 +452,7 @@ if command -v jcmd >/dev/null 2>&1; then
     $JCMD $PID PerfCounter.print > jvm-perfcounter 2>> diagnostics.log
     if command -v jstat > /dev/null 2>&1; then
       if [ $WHOAMI == 'root' ]; then
-        JSTAT="sudo -u $PROC_USERNAME $(which jstat)"
+        JSTAT="sudo -u $PROCESS_USERNAME $(which jstat)"
       else
         JSTAT="jstat"
       fi
@@ -462,10 +476,10 @@ elif ! command -v strace > /dev/null 2>&1; then
   log "Skipping 'strace' output (strace package required)"
 elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping 'strace' output (prohibited by SELINUX deny_ptrace)"
-elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROC_USERNAME ]; then
-  log "Skipping 'strace' output (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
+elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROCESS_USERNAME ]; then
+  log "Skipping 'strace' output (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
-  log "Skipping 'strace' output (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
+  log "Skipping 'strace' output (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 else
   log "Recording 'strace' output for process $PID (10 seconds)"
   timeout 20 strace -ff -tt -o $CMD-strace -p $PID >/dev/null 2>&1
@@ -473,24 +487,26 @@ else
   timeout 20 strace -c -o $CMD-strace-summary -p $PID >/dev/null 2>&1
 fi
 
-
-if [ $GDB_INSTALLED -eq 0 ]; then
+if [ $RUN_GCORE -eq 0 ]; then
+  # Fail silently (gcore diagnostic is optional)
+  :
+elif [ $GDB_INSTALLED -eq 0 ]; then
   log "Skipping GDB core dump (gdb package required)"
 elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping GDB core dump (prohibited by SELINUX deny_ptrace)"
-elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROC_USERNAME ]; then
-  log "Skipping GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
+elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROCESS_USERNAME ]; then
+  log "Skipping GDB core dump (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
-  log "Skipping GDB core dump (prohibited by ptrace_scope $YAMA_PTRACE_SCOPE)"
+  log "Skipping GDB core dump (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 else
-  PROC_MEMORY=$(ps -o vsz= -q $PID)
-  PROC_MEMORY=$(( $PROC_MEMORY / 1024 ))
+  PROCESS_MEMORY=$(ps -o vsz= -q $PID)
+  PROCESS_MEMORY=$(( $PROCESS_MEMORY / 1024 ))
   DISK_SPACE=$(df -Pk . | awk 'NR==2 {print $4}')
   DISK_SPACE=$(( $DISK_SPACE / 1024 ))
   log "Dumping GDB core file for process $PID"
-  log "  Estimated core-file size: ${PROC_MEMORY}MB"
+  log "  Estimated core-file size: ${PROCESS_MEMORY}MB"
   log "  Available disk space: ${DISK_SPACE}MB"
-  if [ $DISK_SPACE -lt $PROC_MEMORY ]; then
+  if [ $DISK_SPACE -lt $PROCESS_MEMORY ]; then
     log "  Not enough disk space to dump core file"
     log "  Aborting dump"
   else
@@ -499,6 +515,12 @@ else
       log "  Core dump failed (core file '${CORE}' not found)"
     else
       log "  Core dumped to ${CORE}"
+      if [ -e $BINARY ]; then
+        log "  Creating symbolic link to process's binary"
+        ln -s $BINARY
+      else
+        log "Cannot create symbolic link to process's binary '$BINARY'"
+      fi
       log "  Getting thread backtraces from ${CORE}"
       gdb $BINARY -c $CORE --quiet \
         -ex "set confirm off" \
@@ -520,13 +542,6 @@ else
       cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chf ${CORE}.libs.tar &> /dev/null
     fi
   fi
-fi
-
-if [ -e $BINARY ]; then
-  log "Creating symbolic link to process's binary"
-  ln -s $BINARY
-else
-  log "Cannot create symbolic link to process's binary '$BINARY'"
 fi
 
 if [ $WHOAMI == 'root' ]; then
