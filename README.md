@@ -8,36 +8,60 @@ Caplin Platform Diagnostics is made available under an MIT licence.
 
 **Contents**:
 
-* [Quick start](#quick-start)
-* [Running diagnostics on a core file](#running-diagnostics-on-a-core-file)
-* [Running diagnostics on a process](#running-diagnostics-on-a-process)
+*   [Requirements](#requirements)
+*   [Quick start](#quick-start)
+*   [Running diagnostics on a core file](#running-diagnostics-on-a-core-file)
+*   [Running diagnostics on a process](#running-diagnostics-on-a-process)
+
+## Requirements
+
+The Caplin Platform Diagnostics scripts have the following requirements:
+
+*   [CentOS](https://www.centos.org/)/[RHEL](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux) 6 or 7
+*   GNU Debugger: `$ sudo yum install gdb`
+*   Red Hat OpenJDK 8 (full JDK, not just JRE): `$ sudo yum install java-1.8.0-openjdk-devel`
+
+## Installation
+
+Copy (or symlink) the two diagnostic scripts to a directory on your executable path. For example, `~/bin/` or `/usr/local/bin/`
 
 ## Quick start
 
-**To run diagnostics on a process, follow the steps below:**
+To run diagnostics on a **process**, follow the steps below:
 
-1.  Install the gdb package if it is not already installed:
+1.  Install dependencies, if not already installed:
+
+    ```
+    $ sudo yum install gdb java-1.8.0-openjdk-devel
+    ```
+
+1.  Run the script below _under the same user as the target process_ (run time 20 seconds):
+
+    ```
+    $ caplin-process-diagnostics.sh <pid>
+    ```
+
+    For full details and options, see [Running diagnostics on a process](#running-diagnostics-on-a-process).
+
+1.  Upload the generated tar file and any log files requested by Caplin Support to Caplin's [File Upload Facility](https://www.caplin.com/account/uploads).
+
+To run diagnostics on a **core-file**, follow the steps below:
+
+1.  Install dependencies, if not already installed:
 
     ```
     $ sudo yum install gdb
     ```
 
-1.  Run one of the commands below:
+1.  Run the script below:
 
-    *   Production environments (run time 20 seconds):
+    ```
+    $ caplin-corefile-diagnostics.sh <corefile>
+    ```
 
-        ```
-        $ ./caplin-process-diagnostics.sh <pid>
-        ```
+    For full details and options, see [Running diagnostics on a core file](#running-diagnostics-on-a-core-file).
 
-    *   Non-production environments:
-
-        ```
-        $ ./caplin-process-diagnostics.sh --gcore <pid>
-        ```
-        
-
-The additional run time required by the `--gcore` option is dependent on the size of the process's virtual memory and the speed at which the host can write the process's virtual memory to disk. 
+1.  Upload the generated tar file and any log files requested by Caplin Support to Caplin's [File Upload Facility](https://www.caplin.com/account/uploads).
 
 ## Running diagnostics on a core file
 
@@ -87,6 +111,10 @@ This script collates the following information:
 |----------------------------------------------|-------------------|------|
 | `/etc/os-release`                            | -                 | -    |
 | `/etc/redhat-release`                        | -                 | -    |
+| `/etc/security/limits.conf`                  | -                 | -    |
+| `/etc/security/limits.d/*`                   | -                 | -    |
+| `ulimit -aS` output                          | -                 | -    |
+| `ulimit -aH` output                          | -                 | -    |
 | `uname -a` output                            | -                 | -    |
 | `df` output for binary's 'var' directory     | -                 | -    |
 | Caplin `dfw versions` output                 | Binary is in a [DFW](https://www.caplin.com/developer/caplin-platform/deployment-framework/) | -    |
@@ -171,16 +199,16 @@ If any requirements are missing when you run the script, the script lists the mi
 *   Write permission to the current directory
 
 **GDB core dump and backtrace diagnostics**:
-*   `gdb` RPM package installed
+*   `gdb` RPM package
 *   Free disk space greater than the process's virtual memory
 *   **CentOS/RHEL 7**: [SELINUX](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/selinux_users_and_administrators_guide/index) boolean  `deny_ptrace` set to off (if SELINUX enabled and enforcing).
 *   **CentOS/RHEL 7**: [Yama kernel module](https://www.kernel.org/doc/Documentation/security/Yama.txt) sysctl setting `kernel.yama.ptrace_scope` set to 0, 1, or 2.
 
 **JVM diagnostics**:
-*   Java `jcmd` utility. If the Caplin component uses a system-wide JDK installation, then `jcmd` is in your executable path.
+*   `java-1.8.0-openjdk-devel` RPM package. This package installs the full JDK, which includes the `jcmd` diagnostic tool.
 
 **Optional `strace` diagnostic**:
-*   `strace` RPM package installed. Only required if requested by Caplin Support.
+*   `strace` RPM package. Only required if requested by Caplin Support.
 
 ### Usage
 
@@ -219,6 +247,8 @@ Default diagnostics:
 | `/proc/sys/kernel/core_pattern`       | -                    | -        |
 | `/proc/sys/kernel/core_uses_pid`      | -                    | -        |
 | `/proc/<pid>/limits`                  | -                    | -        |
+| `/etc/security/limits.conf`           | -                    | -        |
+| `/etc/security/limits.d/*`            | -                    | -        |
 | `top` output for the system (5 seconds)| -                    | -        |
 | `top` output for the process (5 seconds)| -                    | -        |
 | `df` output for the process's `<working-dir>/var` directory| - | -      |

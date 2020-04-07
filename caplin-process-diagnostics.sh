@@ -37,6 +37,7 @@ SYNOPSIS
 DEPENDENCIES
   - CentOS/RHEL 6 or 7
   - GNU Debugger ('gdb' RPM package)
+  - OpenJDK 8 ('java-1.8.0-opendjk-devel' RPM package)
 
 DESCRIPTION
   Collates diagnostic information for a Caplin process, without
@@ -45,6 +46,7 @@ DESCRIPTION
   This script captures the following diagnostics:
     - Operating system name and version
     - Process limits
+    - User limits
     - 'top' output for the system (5 seconds)
     - 'top' output for the process (5 seconds)
     - 'df' output for the process's <working-dir>/var directory
@@ -54,7 +56,7 @@ DESCRIPTION
       - 'dfw info' output
       - 'dfw status' output
       - 'dfw versions' output
-    - If the process has a Java virtual machine (JVM):
+    - If the process has a Java virtual machine (JVM) and JDK tools are available:
       - 'jcmd <pid> Thread.print' output
       - 'jcmd <pid> GC.heap_info' output
       - 'jcmd <pid> VM.system_properties' output
@@ -71,14 +73,14 @@ OPTIONS
   --gcore       Include the optional GDB core dump (gcore)
                 Enable only if requested by Caplin Support
 
-  --strace      Include the optional strace diagnostic.
-                Enable only if requested by Caplin Support.
-
   --jvm-heap    Include the optional JVM heap dump diagnostic.
                 Enable only if requested by Caplin Support.
 
   --jvm-class-histogram
                 Include the optional JVM class histogram diagnostic.
+                Enable only if requested by Caplin Support.
+
+  --strace      Include the optional strace diagnostic.
                 Enable only if requested by Caplin Support.
 
 EOF
@@ -301,7 +303,6 @@ log "=========================="
 log
 log "Process ID:      ${PID}"
 log "Process binary:  ${BINARY}"
-log
 if [ $WHOAMI == 'root' ]; then
   log "Script user:     root"
 elif [ $WHOAMI == $PROCESS_USERNAME ]; then
@@ -327,6 +328,17 @@ for f in /proc/sys/kernel/core_pattern /proc/sys/kernel/core_uses_pid; do
   cat $f > $(echo $f | cut -c 2- | tr / -)
 done
 
+if [ -r /etc/security/limits.conf ]; then
+  log "Recording /etc/security/limits.conf"
+  cat /etc/security/limits.conf >> limits.conf
+  if [ -d /etc/security/limits.d ]; then
+    for f in /etc/security/limits.d/*; do
+      log "Recording $f"
+      cat $f >> limits.conf
+    done
+  fi
+fi
+
 log "Recording /proc/$PID/limits"
 cat /proc/$PID/limits > proc-${PID}-limits
 
@@ -349,10 +361,10 @@ done > top-${PID}.out
 if [ -n $WORKING_DIR ]; then
   if [ -d $WORKING_DIR/var ]; then
     log "Recording 'df' output for ${WORKING_DIR}/var"
-    df -kh $WORKING_DIR/var > df.out
+    df -h $WORKING_DIR/var > df.out
   else
     log "Recording 'df' output for ${WORKING_DIR}"
-    df -kh $WORKING_DIR > df.out
+    df -h $WORKING_DIR > df.out
   fi
 else
   log "Skipping 'df' output (process's working directory unknown)"
@@ -481,9 +493,9 @@ elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROCESS_USERNAME ]; then
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
   log "Skipping 'strace' output (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 else
-  log "Recording 'strace' output for process $PID (10 seconds)"
+  log "Recording 'strace' output for process $PID (20 seconds)"
   timeout 20 strace -ff -tt -o $CMD-strace -p $PID >/dev/null 2>&1
-  log "Recording 'strace' summary output for process $PID (10 seconds)"
+  log "Recording 'strace' summary output for process $PID (20 seconds)"
   timeout 20 strace -c -o $CMD-strace-summary -p $PID >/dev/null 2>&1
 fi
 

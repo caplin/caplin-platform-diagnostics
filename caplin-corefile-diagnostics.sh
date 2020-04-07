@@ -48,6 +48,7 @@ DESCRIPTION
 
   This script collates the following diagnostics:
     - Operating system name and version
+    - User limits
     - 'df' output for the binary's 'var' directory
     - The binary
     - The core file
@@ -269,12 +270,33 @@ fi
 log "Recording 'uname -a' output"
 uname -a > uname.out
 
+log "Recording /proc/sys/kernel/core_pattern"
+log "Recording /proc/sys/kernel/core_uses_pid"
+for f in /proc/sys/kernel/core_pattern /proc/sys/kernel/core_uses_pid; do
+  cat $f > $(echo $f | cut -c 2- | tr / -)
+done
+
+if [ -r /etc/security/limits.conf ]; then
+  log "Recording /etc/security/limits.conf"
+  cat /etc/security/limits.conf >> limits.conf
+  if [ -d /etc/security/limits.d ]; then
+    for f in /etc/security/limits.d/*; do
+      log "Recording $f"
+      cat $f >> limits.conf
+    done
+  fi
+fi
+
+log "Recording ulimit for current user"
+ulimit -aS > ulimit-soft-$USER.out
+ulimit -aH > ulimit-hard-$USER.out
+
 if [ -d $BINARY_WORKING_DIR/var ]; then
   log "Recording 'df' output for $BINARY_WORKING_DIR/var"
-  df $BINARY_WORKING_DIR/var > df.out
+  df -h $BINARY_WORKING_DIR/var > df.out
 else
   log "Recording 'df' output for $BINARY_WORKING_DIR"
-  df $BINARY_WORKING_DIR > df.out
+  df -h $BINARY_WORKING_DIR > df.out
 fi
 
 if [ -n "$DFW" ]; then
