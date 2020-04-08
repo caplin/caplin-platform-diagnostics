@@ -358,17 +358,8 @@ for i in {1..3}; do
   sleep 1
 done > top-${PID}.out
 
-if [ -n $WORKING_DIR ]; then
-  if [ -d $WORKING_DIR/var ]; then
-    log "Recording 'df' output for ${WORKING_DIR}/var"
-    df -h $WORKING_DIR/var > df.out
-  else
-    log "Recording 'df' output for ${WORKING_DIR}"
-    df -h $WORKING_DIR > df.out
-  fi
-else
-  log "Skipping 'df' output (process's working directory unknown)"
-fi
+log "Recording available disk space"
+df -h > df.out
 
 if command -v free >/dev/null 2>&1; then
   log "Recording 'free' output"
