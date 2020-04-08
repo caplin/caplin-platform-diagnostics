@@ -291,13 +291,8 @@ log "Recording ulimit for current user"
 ulimit -aS > ulimit-soft-$USER.out
 ulimit -aH > ulimit-hard-$USER.out
 
-if [ -d $BINARY_WORKING_DIR/var ]; then
-  log "Recording 'df' output for $BINARY_WORKING_DIR/var"
-  df -h $BINARY_WORKING_DIR/var > df.out
-else
-  log "Recording 'df' output for $BINARY_WORKING_DIR"
-  df -h $BINARY_WORKING_DIR > df.out
-fi
+log "Recording available disk space"
+df -h > df.out
 
 if [ -n "$DFW" ]; then
   log "Recording 'dfw versions' output"
