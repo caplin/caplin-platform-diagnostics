@@ -275,6 +275,10 @@ log "Recording /proc/sys/kernel/core_uses_pid"
 for f in /proc/sys/kernel/core_pattern /proc/sys/kernel/core_uses_pid; do
   cat $f > $(echo $f | cut -c 2- | tr / -)
 done
+if [ -d /etc/abrt ]; then
+  log "Recording config for Red Hat ABRT"
+  tar --ignore-failed-read -czf ABRT-config.tar.gz /etc/abrt /etc/libreport
+fi
 
 if [ -r /etc/security/limits.conf ]; then
   log "Recording /etc/security/limits.conf"
