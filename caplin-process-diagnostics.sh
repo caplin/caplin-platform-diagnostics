@@ -564,7 +564,7 @@ done
 log
 log "Archiving files to ${ARCHIVE}.tar.gz"
 cd ..
-tar -chzf ${ARCHIVE}.tar.gz $(basename ${TEMP_DIR})/*
+nice -n 10 tar -chzf ${ARCHIVE}.tar.gz $(basename ${TEMP_DIR})/*
 if [ $WHOAMI == 'root' ]; then
   chown $TEMP_DIR_USER:$TEMP_DIR_GROUP ${ARCHIVE}.tar.gz
 fi
