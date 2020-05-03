@@ -344,7 +344,7 @@ done
 log
 log "Archiving files to ${ARCHIVE}.tar.gz"
 cd ..
-tar -chzf ${ARCHIVE}.tar.gz $(basename ${TEMP_DIR})/*
+nice -n 10 tar -chzf ${ARCHIVE}.tar.gz $(basename ${TEMP_DIR})/*
 rm $TEMP_DIR/*
 rmdir $TEMP_DIR
 echo
