@@ -23,14 +23,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+SCRIPT_FILE=$(basename "$0")
+SCRIPT_DIR=$(dirname "$0")
+
 HELP="$(cat << EOF
 
 NAME
-  $(basename $0) - run diagnostics on a core file
+  $SCRIPT_FILE - run diagnostics on a core file
 
 SYNOPSIS
-  $(basename $0)  [binary]  core
-  $(basename $0)  core  [binary]
+  $SCRIPT_FILE  [binary]  core
+  $SCRIPT_FILE  core  [binary]
 
     binary:  path to the binary that crashed
              (Required if the binary is not in the location
@@ -66,7 +69,7 @@ POSITIONAL=()
 while [[ $# -gt 0 ]]
 do
   key="$1"
-  case $key in
+  case "$key" in
       -h|--help)
       SHOW_HELP=1
       shift
@@ -99,56 +102,56 @@ fi
 if [ $# -eq 1 ]; then
   # One argument (core file)
   # Try to derive the location of the binary from the core file
-  if [ ! -f $1 ]; then
+  if [ ! -f "$1" ]; then
     echo "File does not exist or is not a regular file: $1"
     exit 1
   fi
-  if file -b $1 | cut -d, -f1 | grep 'core file' > /dev/null; then
-    CORE=$(readlink -e $1)
-    EXECFN=$(file --brief $1 | grep -o -E "execfn: '[^']+" | sed -r "s/execfn: '//")
+  if file -b "$1" | cut -d, -f1 | grep 'core file' > /dev/null; then
+    CORE=$(readlink -e "$1")
+    EXECFN=$(file --brief "$1" | grep -o -E "execfn: '[^']+" | sed -r "s/execfn: '//")
     if [ -n "$EXECFN" ]; then
-      if [ -f $EXECFN ]; then
-        BINARY=$(readlink -e $EXECFN)
+      if [ -f "$EXECFN" ]; then
+        BINARY=$(readlink -e "$EXECFN")
       else
-        echo "Core file $(basename $1) has recorded the location of the crashed binary"
+        echo "Core file has recorded the location of the crashed binary"
         echo "Cannot find binary $EXECFN"
-        echo "Usage: $(basename $0) [binary] core"
-        echo "       $(basename $0) core [binary]"
+        echo "Usage: $SCRIPT_FILE [binary] core"
+        echo "       $SCRIPT_FILE core [binary]"
         exit 1
       fi
     else
-      echo "Core file $(basename $1) has not recorded the location of the crashed binary"
+      echo "Core file has not recorded the location of the crashed binary"
       echo "Please specify both the binary and the core on the command line"
-      echo "Usage: $(basename $0) [binary] core"
-      echo "       $(basename $0) core [binary]"
+      echo "Usage: $SCRIPT_FILE [binary] core"
+      echo "       $SCRIPT_FILE core [binary]"
       exit 1
     fi
   else
     echo "Not a core file: $1"
-    echo "Usage: $(basename $0) [binary] core"
-    echo "       $(basename $0) core [binary]"
+    echo "Usage: $SCRIPT_FILE [binary] core"
+    echo "       $SCRIPT_FILE core [binary]"
     exit 1
   fi
 elif [ $# -eq 2 ]; then
   # Two arguments
   # Determine which is the binary and which is the core file
-  for f in $1 $2; do
-    if [ ! -f $f ]; then
+  for f in "$1" "$2"; do
+    if [ ! -f "$f" ]; then
       echo "File does not exist or is not a regular file: $f"
       exit 1
     fi
   done
-  if file -b $1 | cut -d, -f1 | grep 'core file' > /dev/null; then
-    CORE=$(readlink -e $1)
-  elif file -b $1 | cut -d, -f1 | grep 'executable' > /dev/null; then
-    BINARY=$(readlink -e $1)
+  if file -b "$1" | cut -d, -f1 | grep 'core file' > /dev/null; then
+    CORE=$(readlink -e "$1")
+  elif file -b "$1" | cut -d, -f1 | grep 'executable' > /dev/null; then
+    BINARY=$(readlink -e "$1")
   fi
-  if file -b $2 | cut -d, -f1 | grep 'core file' > /dev/null; then
-    CORE=$(readlink -e $2)
-  elif file -b $2 | cut -d, -f1 | grep 'executable' > /dev/null; then
-    BINARY=$(readlink -e $2)
+  if file -b "$2" | cut -d, -f1 | grep 'core file' > /dev/null; then
+    CORE=$(readlink -e "$2")
+  elif file -b "$2" | cut -d, -f1 | grep 'executable' > /dev/null; then
+    BINARY=$(readlink -e "$2")
   fi
-  if [ -z $BINARY -o -z $CORE ]; then
+  if [ -z "$BINARY" -o -z "$CORE" ]; then
     printf '%s\n\n' "$HELP"
     exit 1
   fi
@@ -179,17 +182,17 @@ searchparents () {
 # Param 1: log message
 #
 log () {
-  echo "$1" | tee -a diagnostics.log
+  echo "$(date --iso-8601=seconds)   $1" | tee -a diagnostics.log
 }
 
-BINARY_FILENAME=$(basename $BINARY)
-CORE_FILENAME=$(basename $CORE)
-BINARY_DIR=$(dirname $BINARY)
+BINARY_FILENAME=$(basename "$BINARY")
+CORE_FILENAME=$(basename "$CORE")
+BINARY_DIR=$(dirname "$BINARY")
 HOSTNAME=$(hostname -s)
-DFW=$(searchparents $BINARY_DIR dfw)
-if [ -n $DFW ]; then
-  DFW=$(readlink -e $DFW)
-  DFW_ROOT=$(dirname $DFW)
+DFW=$(searchparents "$BINARY_DIR" dfw)
+if [ -n "$DFW" ]; then
+  DFW=$(readlink -e "$DFW")
+  DFW_ROOT=$(dirname "$DFW")
 fi
 ARCHIVE=diagnostics-${HOSTNAME}-${BINARY_FILENAME}-${CORE_FILENAME//:/}-$(date +%Y%m%d%H%M%S)
 if command -v gdb >/dev/null 2>&1; then
@@ -201,18 +204,18 @@ fi
 # Infer the working directory of the binary.
 # The inference is only accurate if the binary has not been
 # moved from the original location in which it crashed.
-if [ $BINARY_FILENAME == 'rttpd' -a -n $DFW_ROOT ]; then
+if [ "$BINARY_FILENAME" == 'rttpd' -a -n "$DFW_ROOT" ]; then
   BINARY_WORKING_DIR=$DFW_ROOT/servers/Liberator
-elif [ $BINARY_FILENAME == 'rttpd' -a -z $DFW_ROOT ]; then
-  BINARY_WORKING_DIR=$(readlink -e $BINARY_DIR/..)
-elif [ $BINARY_FILENAME == 'transformer' -a -n $DFW_ROOT ]; then
+elif [ "$BINARY_FILENAME" == 'rttpd' -a -z "$DFW_ROOT" ]; then
+  BINARY_WORKING_DIR=$(readlink -e "$BINARY_DIR/..")
+elif [ "$BINARY_FILENAME" == 'transformer' -a -n "$DFW_ROOT" ]; then
   BINARY_WORKING_DIR=$DFW_ROOT/servers/Transformer
-elif [ $BINARY_FILENAME == 'transformer' -a -z $DFW_ROOT ]; then
-  BINARY_WORKING_DIR=$(readlink -e $BINARY_DIR/..)
-elif readlink -e $BINARY_DIR/.. | grep 'DataSource' > /dev/null ; then
-  BINARY_WORKING_DIR=$(readlink -e $BINARY_DIR/..)
+elif [ "$BINARY_FILENAME" == 'transformer' -a -z "$DFW_ROOT" ]; then
+  BINARY_WORKING_DIR=$(readlink -e "$BINARY_DIR/..")
+elif readlink -e "$BINARY_DIR/.." | grep 'DataSource' > /dev/null ; then
+  BINARY_WORKING_DIR=$(readlink -e "$BINARY_DIR/..")
 else
-  BINARY_WORKING_DIR=$BINARY_DIR
+  BINARY_WORKING_DIR="$BINARY_DIR"
 fi
 
 if [ $GDB_INSTALLED -eq 0 ]; then
@@ -231,7 +234,7 @@ if [ $GDB_INSTALLED -eq 0 ]; then
   echo "to collect the required libraries manually."
   echo
   read -p "Continue without installing GDB? [Y/N]: " RESPONSE
-  if [ $RESPONSE != 'y' -a $RESPONSE != 'Y' ]; then
+  if [ "$RESPONSE" != 'y' -a "$RESPONSE" != 'Y' ]; then
     echo
     exit 1
   fi
@@ -239,16 +242,16 @@ if [ $GDB_INSTALLED -eq 0 ]; then
 fi
 
 
-if ! mkdir -p $ARCHIVE; then
+if ! mkdir -p "$ARCHIVE"; then
   echo "Could not create directory $ARCHIVE"
   exit 1
 fi
-TEMP_DIR=$(readlink -e $ARCHIVE)
-cd $TEMP_DIR
-ln -s $BINARY
-ln -s $CORE ${CORE_FILENAME//:/}
+TEMP_DIR=$(readlink -e "$ARCHIVE")
+cd "$TEMP_DIR"
+ln -s "$BINARY"
+ln -s "$CORE" "${CORE_FILENAME//:/}"
 
-log
+echo
 log "Caplin Core-file Diagnostics"
 log "============================"
 log
@@ -256,7 +259,7 @@ log "Host:            $(hostname)"
 log "Core:            ${CORE}"
 log "Binary:          ${BINARY}"
 log "GDB installed:   ${GDB_INSTALLED}"
-log "Script temp dir: ./$(basename ${TEMP_DIR})"
+log "Script temp dir: ./$ARCHIVE"
 log
 
 if [ -r /etc/os-release ]; then
@@ -273,7 +276,7 @@ uname -a > uname.out
 log "Recording /proc/sys/kernel/core_pattern"
 log "Recording /proc/sys/kernel/core_uses_pid"
 for f in /proc/sys/kernel/core_pattern /proc/sys/kernel/core_uses_pid; do
-  cat $f > $(echo $f | cut -c 2- | tr / -)
+  cat "$f" > "$(echo $f | cut -c 2- | tr / -)"
 done
 if [ -d /etc/abrt ]; then
   log "Recording config for Red Hat ABRT"
@@ -283,12 +286,7 @@ fi
 if [ -r /etc/security/limits.conf ]; then
   log "Recording /etc/security/limits.conf"
   cat /etc/security/limits.conf >> limits.conf
-  if [ -d /etc/security/limits.d ]; then
-    for f in /etc/security/limits.d/*; do
-      log "Recording $f"
-      cat $f >> limits.conf
-    done
-  fi
+  find /etc/security/limits.d -name '*.conf' -exec cat {} \; >> limits.conf
 fi
 
 log "Recording ulimit for current user"
@@ -300,14 +298,14 @@ df -h > df.out
 
 if [ -n "$DFW" ]; then
   log "Recording 'dfw versions' output"
-  $DFW versions > dfw-versions.out 2>&1
+  "$DFW" versions > dfw-versions.out 2>&1
 else
   log "Skipping Deployment Framework output (no Deployment Framework found)"
 fi
 
 if [ $GDB_INSTALLED -eq 1 ]; then
   log "Getting thread backtraces from ${CORE_FILENAME}"
-  gdb $BINARY -c $CORE --quiet \
+  gdb "$BINARY" -c "$CORE" --quiet \
     -ex "set confirm off" \
     -ex "set logging file ${CORE_FILENAME//:/}.backtrace.out" \
     -ex "set logging on" \
@@ -320,7 +318,7 @@ fi
 
 if [ $GDB_INSTALLED -eq 1 ]; then
   log "Collating libraries referenced by ${CORE_FILENAME}"
-  gdb $BINARY -c $CORE --quiet \
+  gdb "$BINARY" -c "$CORE" --quiet \
     -ex "set confirm off" \
     -ex "set logging file libs-list.out" \
     -ex "set logging on" \
@@ -328,7 +326,7 @@ if [ $GDB_INSTALLED -eq 1 ]; then
     -ex "info sharedlibrary" \
     -ex "quit" > /dev/null 2>> diagnostics.log
   grep "^0x" ./libs-list.out | awk '{if ($5 != "")print $5}' &> libs-list.txt
-  cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chvf ${CORE_FILENAME//:/}.libs.tar --ignore-failed-read &> /dev/null
+  cat libs-list.txt | sed "s/\/\.\.\//\//g" | xargs tar -chvf "${CORE_FILENAME//:/}.libs.tar" --ignore-failed-read &> /dev/null
 else
   log "Skipping core-file shared libraries (GDB not installed)"
 fi
@@ -344,9 +342,9 @@ done
 log
 log "Archiving files to ${ARCHIVE}.tar.gz"
 cd ..
-nice -n 10 tar -chzf ${ARCHIVE}.tar.gz $(basename ${TEMP_DIR})/*
-rm $TEMP_DIR/*
-rmdir $TEMP_DIR
+nice -n 10 tar -chzf "${ARCHIVE}.tar.gz" "$ARCHIVE"
+rm "$TEMP_DIR"/*
+rmdir "$TEMP_DIR"
 echo
 echo "Please login to https://www.caplin.com/account/uploads"
 echo "and upload the archive to Caplin Support."
