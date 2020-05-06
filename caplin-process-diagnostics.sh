@@ -23,13 +23,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+SCRIPT_FILE=$(basename "$0")
+SCRIPT_DIR=$(dirname "$0")
+
 HELP="$(cat << EOF
 
 NAME
-  $(basename $0) - run diagnostics on a Caplin process
+  $SCRIPT_FILE - run diagnostics on a Caplin process
 
 SYNOPSIS
-  $(basename $0) [options] pid
+  $SCRIPT_FILE [options] pid
 
     [options]:  see OPTIONS below
     pid:        process identifier
@@ -37,7 +40,7 @@ SYNOPSIS
 DEPENDENCIES
   - CentOS/RHEL 6 or 7
   - GNU Debugger ('gdb' RPM package)
-  - OpenJDK 8 ('java-1.8.0-opendjk-devel' RPM package)
+  - OpenJDK 8 ('java-1.8.0-openjdk-devel' RPM package)
 
 DESCRIPTION
   Collates diagnostic information for a Caplin process, without
@@ -95,7 +98,7 @@ POSITIONAL=()
 while [[ $# -gt 0 ]]
 do
   key="$1"
-  case $key in
+  case "$key" in
       -h|--help)
       SHOW_HELP=1
       shift
@@ -147,7 +150,7 @@ PROCESS_USER_ID=$(stat -c %u /proc/${PID})
 PROCESS_USERNAME=$(stat -c %U /proc/${PID})
 PROCESS_MEMORY=$(ps -o vsz= -q $PID)
 PROCESS_MEMORY=$(( $PROCESS_MEMORY / 1024 ))
-if [ $WHOAMI != 'root' -a $WHOAMI != $PROCESS_USERNAME ]; then
+if [ "$WHOAMI" != 'root' -a "$WHOAMI" != "$PROCESS_USERNAME" ]; then
   echo "This script must be run as root (recommended) or the same user as process $PID ($PROCESS_USERNAME)"
   exit 1
 fi
@@ -172,25 +175,25 @@ searchparents () {
 # Param 1: log message
 #
 log () {
-  echo "$1" | tee -a diagnostics.log
+  echo "$(date --iso-8601=seconds)   $1" | tee -a diagnostics.log
 }
 
 HOSTNAME=$(hostname -s)
 DISK_SPACE=$(df -Pk . | awk 'NR==2 {print $4}')
 DISK_SPACE=$(( $DISK_SPACE / 1024 ))
 BINARY=$(readlink -e /proc/${PID}/exe)
-BINARY_DIR=$(dirname $BINARY)
-CMD=$(basename $BINARY)
+BINARY_DIR=$(dirname "$BINARY")
+CMD=$(basename "$BINARY")
 WORKING_DIR=$(pwdx $PID | cut -d' ' -f2)
 CORE=${CMD}.core.${PID}
-DFW=$(searchparents $BINARY_DIR dfw)
-if [ -n $DFW ]; then
-  DFW=$(readlink -e $DFW)
+DFW=$(searchparents "$BINARY_DIR" dfw)
+if [ -n "$DFW" ]; then
+  DFW=$(readlink -e "$DFW")
 fi
 ARCHIVE=diagnostics-${HOSTNAME}-${CMD}-${PID}-$(date +%Y%m%d%H%M%S)
-if [ $WHOAMI == 'root' ]; then
+if [ "$WHOAMI" == 'root' ]; then
   # Use the process user's JAVA_HOME
-  export JAVA_HOME=$(su -l -c 'echo $JAVA_HOME' $PROCESS_USERNAME)
+  export JAVA_HOME=$(su -l -c 'echo $JAVA_HOME' "$PROCESS_USERNAME")
 fi
 if command -v gdb >/dev/null 2>&1; then
   GDB_INSTALLED=1
@@ -278,37 +281,37 @@ if [ ${#WARNINGS[@]} -gt 0 ]; then
   done
   echo
   read -p "Continue? [Y/N]: " RESPONSE
-  if [ $RESPONSE != 'y' -a $RESPONSE != 'Y' ]; then
+  if [ "$RESPONSE" != 'y' -a "$RESPONSE" != 'Y' ]; then
     echo
     exit 1
   fi
   echo
 fi
 
-if ! mkdir -p $ARCHIVE; then
+if ! mkdir -p "$ARCHIVE"; then
   echo "Could not create temporary directory $ARCHIVE"
   exit 1
 fi
-TEMP_DIR=$(readlink -e $ARCHIVE)
+TEMP_DIR=$(readlink -e "$ARCHIVE")
 TEMP_DIR_USER=$(stat . -c %U)
 TEMP_DIR_GROUP=$(stat . -c %G)
-if [ $WHOAMI == 'root' ]; then
-  chown $TEMP_DIR_USER:$TEMP_DIR_GROUP $TEMP_DIR
+if [ "$WHOAMI" == 'root' ]; then
+  chown "$TEMP_DIR_USER":"$TEMP_DIR_GROUP" "$TEMP_DIR"
 fi
-cd $TEMP_DIR
+cd "$TEMP_DIR"
 
-log
+echo
 log "Caplin Process Diagnostics"
 log "=========================="
 log
 log "Process ID:      ${PID}"
 log "Process binary:  ${BINARY}"
-if [ $WHOAMI == 'root' ]; then
+if [ "$WHOAMI" == 'root' ]; then
   log "Script user:     root"
-elif [ $WHOAMI == $PROCESS_USERNAME ]; then
+elif [ "$WHOAMI" == "$PROCESS_USERNAME" ]; then
   log "Script user:     same user as process $PID"
 fi
-log "Script temp dir: ./$(basename ${TEMP_DIR})"
+log "Script temp dir: ./$ARCHIVE"
 log
 
 if [ -r /etc/os-release ]; then
@@ -325,7 +328,7 @@ uname -a > uname.out
 log "Recording /proc/sys/kernel/core_pattern"
 log "Recording /proc/sys/kernel/core_uses_pid"
 for f in /proc/sys/kernel/core_pattern /proc/sys/kernel/core_uses_pid; do
-  cat $f > $(echo $f | cut -c 2- | tr / -)
+  cat "$f" > "$(echo $f | cut -c 2- | tr / -)"
 done
 if [ -d /etc/abrt ]; then
   log "Recording config for Red Hat ABRT"
@@ -335,12 +338,7 @@ fi
 if [ -r /etc/security/limits.conf ]; then
   log "Recording /etc/security/limits.conf"
   cat /etc/security/limits.conf >> limits.conf
-  if [ -d /etc/security/limits.d ]; then
-    for f in /etc/security/limits.d/*; do
-      log "Recording $f"
-      cat $f >> limits.conf
-    done
-  fi
+  find /etc/security/limits.d -name '*.conf' -exec cat {} \; >> limits.conf
 fi
 
 log "Recording /proc/$PID/limits"
@@ -381,11 +379,11 @@ fi
 
 if [ -n "$DFW" ]; then
   log "Recording 'dfw info' output"
-  $DFW info > dfw-info.out 2>&1
+  "$DFW" info > dfw-info.out 2>&1
   log "Recording 'dfw status' output"
-  $DFW status > dfw-status.out 2>&1
+  "$DFW" status > dfw-status.out 2>&1
   log "Recording 'dfw versions' output"
-  $DFW versions > dfw-versions.out 2>&1
+  "$DFW" versions > dfw-versions.out 2>&1
 else
   log "Skipping Caplin Deployment Framework reports (dfw command not found)"
 fi
@@ -394,7 +392,7 @@ if [ $GDB_INSTALLED -eq 0 ]; then
   log "Skipping GDB thread backtraces (gdb package required)"
 elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping GDB thread backtraces (prohibited by SELINUX deny_ptrace)"
-elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROCESS_USERNAME ]; then
+elif [ $YAMA_PTRACE_SCOPE -ne 0 -a "$WHOAMI" == "$PROCESS_USERNAME" ]; then
   log "Skipping GDB thread backtraces (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
   log "Skipping GDB thread backtraces (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
@@ -418,8 +416,8 @@ fi
 
 if command -v jcmd >/dev/null 2>&1; then
   if jcmd -l | grep "^$PID " > /dev/null 2>&1; then
-    if [ $WHOAMI == 'root' ]; then
-      JCMD="sudo -u $PROCESS_USERNAME $(which jcmd)"
+    if [ "$WHOAMI" == 'root' ]; then
+      JCMD="sudo -u '$PROCESS_USERNAME' $(which jcmd)"
     else
       JCMD="jcmd"
     fi
@@ -458,8 +456,8 @@ if command -v jcmd >/dev/null 2>&1; then
     log "Recording JVM performance counters"
     $JCMD $PID PerfCounter.print > jvm-perfcounter 2>> diagnostics.log
     if command -v jstat > /dev/null 2>&1; then
-      if [ $WHOAMI == 'root' ]; then
-        JSTAT="sudo -u $PROCESS_USERNAME $(which jstat)"
+      if [ "$WHOAMI" == 'root' ]; then
+        JSTAT="sudo -u '$PROCESS_USERNAME' $(which jstat)"
       else
         JSTAT="jstat"
       fi
@@ -483,7 +481,7 @@ elif ! command -v strace > /dev/null 2>&1; then
   log "Skipping 'strace' output (strace package required)"
 elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping 'strace' output (prohibited by SELINUX deny_ptrace)"
-elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROCESS_USERNAME ]; then
+elif [ $YAMA_PTRACE_SCOPE -ne 0 -a "$WHOAMI" == "$PROCESS_USERNAME" ]; then
   log "Skipping 'strace' output (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
   log "Skipping 'strace' output (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
@@ -501,7 +499,7 @@ elif [ $GDB_INSTALLED -eq 0 ]; then
   log "Skipping GDB core dump (gdb package required)"
 elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping GDB core dump (prohibited by SELINUX deny_ptrace)"
-elif [ $YAMA_PTRACE_SCOPE -ne 0 -a $WHOAMI == $PROCESS_USERNAME ]; then
+elif [ $YAMA_PTRACE_SCOPE -ne 0 -a "$WHOAMI" == "$PROCESS_USERNAME" ]; then
   log "Skipping GDB core dump (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
   log "Skipping GDB core dump (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
@@ -518,18 +516,18 @@ else
     log "  Aborting dump"
   else
     gcore -o ${CMD}.core $PID >/dev/null 2>&1
-    if [ ! -e $CORE ]; then
+    if [ ! -e "$CORE" ]; then
       log "  Core dump failed (core file '${CORE}' not found)"
     else
       log "  Core dumped to ${CORE}"
-      if [ -e $BINARY ]; then
+      if [ -e "$BINARY" ]; then
         log "  Creating symbolic link to process's binary"
-        ln -s $BINARY
+        ln -s "$BINARY"
       else
         log "Cannot create symbolic link to process's binary '$BINARY'"
       fi
       log "  Getting thread backtraces from ${CORE}"
-      gdb $BINARY -c $CORE --quiet \
+      gdb "$BINARY" -c "$CORE" --quiet \
         -ex "set confirm off" \
         -ex "set logging file ${CORE}.backtrace.out" \
         -ex "set logging on" \
@@ -537,7 +535,7 @@ else
         -ex "thread apply all bt full" \
         -ex "quit" > /dev/null 2>> diagnostics.log
       log "  Getting list of libraries referenced by $CORE"
-      gdb $BINARY -c $CORE --quiet \
+      gdb "$BINARY" -c "$CORE" --quiet \
         -ex "set confirm off" \
         -ex "set logging file libs-list.out" \
         -ex "set logging on" \
@@ -551,8 +549,8 @@ else
   fi
 fi
 
-if [ $WHOAMI == 'root' ]; then
-  chown $TEMP_DIR_USER:$TEMP_DIR_GROUP *
+if [ "$WHOAMI" == 'root' ]; then
+  chown "$TEMP_DIR_USER":"$TEMP_DIR_GROUP" ./*
 fi
 log
 log "DONE"
@@ -564,12 +562,12 @@ done
 log
 log "Archiving files to ${ARCHIVE}.tar.gz"
 cd ..
-nice -n 10 tar -chzf ${ARCHIVE}.tar.gz $(basename ${TEMP_DIR})/*
+nice -n 10 tar -chzf "${ARCHIVE}.tar.gz" "$ARCHIVE"
 if [ $WHOAMI == 'root' ]; then
-  chown $TEMP_DIR_USER:$TEMP_DIR_GROUP ${ARCHIVE}.tar.gz
+  chown "$TEMP_DIR_USER":"$TEMP_DIR_GROUP" "${ARCHIVE}.tar.gz"
 fi
-rm $TEMP_DIR/*
-rmdir $TEMP_DIR
+rm "$TEMP_DIR"/*
+rmdir "$TEMP_DIR"
 echo
 echo "Please login to https://www.caplin.com/account/uploads"
 echo "and upload the archive to Caplin Support."
