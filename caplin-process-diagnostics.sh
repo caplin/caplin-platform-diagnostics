@@ -353,7 +353,7 @@ for i in {1..5}; do
 done > top.out
 
 log "Recording 'top' output for process $PID (5 seconds)"
-for i in {1..3}; do
+for i in {1..5}; do
   echo
   echo
   top -H -p $PID -b -n 1
