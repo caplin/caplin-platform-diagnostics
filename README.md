@@ -220,7 +220,8 @@ If any requirements are missing when you run the script, the script lists the mi
     *   `--jvm-heap`: include the optional JVM heap dump diagnostic. Halts the JVM temporarily for the duration of the diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--jvm-class-histogram`: include the optional JVM class histogram diagnostic. Halts the JVM temporarily for the duration of the diagnostic. Only include this diagnostic when requested by Caplin Support.
     *   `--strace`: include the optional `strace` diagnostic. Only include this diagnostic when requested by Caplin Support.
-    *   `--help`: display help
+    *   `--help`: display help and exit
+    *   `--version`: display version and exit
 
 **Run as**:
 

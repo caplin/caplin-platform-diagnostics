@@ -23,6 +23,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+VERSION=0.0.12
+
 SCRIPT_FILE=$(basename "$0")
 SCRIPT_DIR=$(dirname "$0")
 
@@ -65,6 +67,7 @@ EOF
 )"
 
 SHOW_HELP=0
+SHOW_VERSION=0
 POSITIONAL=()
 while [[ $# -gt 0 ]]
 do
@@ -72,6 +75,10 @@ do
   case "$key" in
       -h|--help)
       SHOW_HELP=1
+      shift
+      ;;
+      -v|--version)
+      SHOW_VERSION=1
       shift
       ;;
       *)
@@ -82,13 +89,17 @@ do
 done
 set -- "${POSITIONAL[@]}"
 
-if [ $# -eq 0 ]; then
-  printf '%s\n\n' "$HELP"
-  exit 1
-fi
 if [ $SHOW_HELP -eq 1 ]; then
   printf '%s\n\n' "$HELP"
   exit 0
+fi
+if [ $SHOW_VERSION -eq 1 ]; then
+  printf '%s\n\n' "$VERSION"
+  exit 0
+fi
+if [ $# -eq 0 ]; then
+  printf '%s\n\n' "$HELP"
+  exit 1
 fi
 if [ ! -w . ]; then
   echo "This script must be run from a writeable directory. Aborting."

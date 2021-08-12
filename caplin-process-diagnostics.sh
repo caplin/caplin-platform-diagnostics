@@ -23,6 +23,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+VERSION=0.0.12
+
 SCRIPT_FILE=$(basename "$0")
 SCRIPT_DIR=$(dirname "$0")
 
@@ -85,6 +87,8 @@ OPTIONS
 
   --strace      Include the optional strace diagnostic.
                 Enable only if requested by Caplin Support.
+  
+  -v --version  Print the script version and exit
 
 EOF
 )"
@@ -94,6 +98,7 @@ RUN_JVM_HEAP=0
 RUN_JVM_CLASS_HISTOGRAM=0
 RUN_GCORE=0
 SHOW_HELP=0
+SHOW_VERSION=0
 POSITIONAL=()
 while [[ $# -gt 0 ]]
 do
@@ -119,6 +124,10 @@ do
       RUN_GCORE=1
       shift
       ;;
+      -v|--version)
+      SHOW_VERSION=1
+      shift
+      ;;
       *)
       POSITIONAL+=("$1")
       shift
@@ -127,13 +136,17 @@ do
 done
 set -- "${POSITIONAL[@]}"
 
-if [ $# -ne 1 ]; then
-  printf '%s\n\n' "$HELP"
-  exit 1
-fi
 if [ $SHOW_HELP -eq 1 ]; then
   printf '%s\n\n' "$HELP"
   exit 0
+fi
+if [ $SHOW_VERSION -eq 1 ] ; then
+  printf '%s\n' "$VERSION"
+  exit 0
+fi
+if [ $# -ne 1 ]; then
+  printf '%s\n\n' "$HELP"
+  exit 1
 fi
 if [ ! -e "/proc/$1" ]; then
   echo "Process $1 not found"
@@ -145,13 +158,23 @@ if [ ! -w . ]; then
 fi
 
 PID=$1
-WHOAMI=$(whoami)
-PROCESS_USER_ID=$(stat -c %u /proc/${PID})
-PROCESS_USERNAME=$(stat -c %U /proc/${PID})
+MY_EUID=$(id --user)
+MY_RUID=$(id --user --real)
+MY_EUSER=$(id --user --name)
+MY_RUSER=$(id --user --name --real)
+PROCESS_EUID=$(ps --pid ${PID} --no-headers --format euser)
+PROCESS_RUID=$(ps --pid ${PID} --no-headers --format ruser)
+PROCESS_SUID=$(ps --pid ${PID} --no-headers --format suser)
+PROCESS_FUID=$(ps --pid ${PID} --no-headers --format fuser)
+PROCESS_EUSER=$(ps --pid ${PID} --no-headers --format euser)
+PROCESS_RUSER=$(ps --pid ${PID} --no-headers --format ruser)
+PROCESS_SUSER=$(ps --pid ${PID} --no-headers --format suser)
+PROCESS_FUSER=$(ps --pid ${PID} --no-headers --format fuser)
 PROCESS_MEMORY=$(ps -o vsz= -q $PID)
 PROCESS_MEMORY=$(( $PROCESS_MEMORY / 1024 ))
-if [ "$WHOAMI" != 'root' -a "$WHOAMI" != "$PROCESS_USERNAME" ]; then
-  echo "This script must be run as root (recommended) or the same user as process $PID ($PROCESS_USERNAME)"
+
+if [ "$MY_EUSER" != 'root' -a "$MY_EUSER" != "$PROCESS_EUSER" ]; then
+  echo "This script must be run as user '$PROCESS_EUSER' (the same user as process $PID) or root"
   exit 1
 fi
 
@@ -179,21 +202,29 @@ log () {
 }
 
 HOSTNAME=$(hostname -s)
+CMD=$(ps --pid $PID --no-headers --format comm)
+CORE=${CMD}.core.${PID}
+ARCHIVE=diagnostics-${HOSTNAME}-${CMD}-${PID}-$(date +%Y%m%d%H%M%S)
 DISK_SPACE=$(df -Pk . | awk 'NR==2 {print $4}')
 DISK_SPACE=$(( $DISK_SPACE / 1024 ))
-BINARY=$(readlink -e /proc/${PID}/exe)
-BINARY_DIR=$(dirname "$BINARY")
-CMD=$(basename "$BINARY")
-WORKING_DIR=$(pwdx $PID | cut -d' ' -f2)
-CORE=${CMD}.core.${PID}
-DFW=$(searchparents "$BINARY_DIR" dfw)
-if [ -n "$DFW" ]; then
-  DFW=$(readlink -e "$DFW")
+DUMPABLE=0
+BINARY=""
+BINARY_DIR=""
+WORKING_DIR=""
+DFW=""
+if [ -r /proc/$PID/exe ] ; then
+  DUMPABLE=1
+  BINARY=$(readlink -e /proc/${PID}/exe)
+  BINARY_DIR=$(dirname "$BINARY")
+  WORKING_DIR=$(pwdx $PID | cut -d' ' -f2)
+  DFW=$(searchparents "$BINARY_DIR" dfw)
+  if [ -n "$DFW" ]; then
+    DFW=$(readlink -e "$DFW")
+  fi
 fi
-ARCHIVE=diagnostics-${HOSTNAME}-${CMD}-${PID}-$(date +%Y%m%d%H%M%S)
-if [ "$WHOAMI" == 'root' ]; then
+if [ "$MY_EUSER" == 'root' ]; then
   # Use the process user's JAVA_HOME
-  export JAVA_HOME=$(su -l -c 'echo $JAVA_HOME' "$PROCESS_USERNAME")
+  export JAVA_HOME=$(su -l -c 'echo $JAVA_HOME' "$PROCESS_EUSER")
 fi
 if command -v gdb >/dev/null 2>&1; then
   GDB_INSTALLED=1
@@ -225,6 +256,13 @@ if [ $GDB_INSTALLED -eq 0 ]; then
     WARNINGS+=("GDB core dump (requires 'gdb' package)")
   fi
 fi
+if [ $DUMPABLE -eq 0 ] ; then
+  WARNINGS+=("GDB thread backtrace (user '$MY_EUSER' cannot read /proc/$PID/exe, which indicates a failed ptrace access mode check. Try running this script as root.)")
+  WARNINGS+=("Caplin DFW command output (user '$MY_EUSER' cannot read /proc/$PID/exe to determine the path to the $CMD binary. Try running this script as root.)")
+  if [ $RUN_GCORE -eq 1 ]; then
+    WARNINGS+=("GDB core dump (user '$MY_EUSER' cannot read /proc/$PID/exe, which indicates a failed ptrace access mode check. Try running this script as root.)")
+  fi
+fi
 if [ $SELINUX_DENY_PTRACE -eq 1 ]; then
   if [ $RUN_STRACE -eq 1 ]; then
     WARNINGS+=("strace (prohibited by SELINUX deny_ptrace)")
@@ -248,7 +286,7 @@ if [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
     WARNINGS+=("strace (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)")
   fi
 fi
-if [ $YAMA_PTRACE_SCOPE -gt 0 -a $YAMA_PTRACE_SCOPE -lt 3 -a $WHOAMI != 'root' ]; then
+if [ $YAMA_PTRACE_SCOPE -gt 0 -a $YAMA_PTRACE_SCOPE -lt 3 -a $MY_EUSER != 'root' ]; then
   WARNINGS+=("GDB thread backtrace (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)")
   if [ $RUN_GCORE -eq 1 ]; then
     WARNINGS+=("GDB core dump (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)")
@@ -265,14 +303,20 @@ if ! command -v jcmd >/dev/null 2>&1; then
 fi
 if [ ${#WARNINGS[@]} -gt 0 ]; then
   echo
-  echo "Script user:               ${WHOAMI}"
-  echo "Process user:              ${PROCESS_USERNAME}"
+  echo "Process ID: ${PID}"
+  echo "Process binary: ${CMD}"
+  echo "Process binary path: ${BINARY:-?}"
+  echo "Process effective user: ${PROCESS_EUSER}"
+  echo "Process real user: ${PROCESS_RUSER}"
+  echo "Process saved user: ${PROCESS_SUSER}"
+  echo "Script effective user: ${MY_EUSER}"
+  echo "Script real user: ${MY_RUSER}"
   if [ -r /proc/sys/kernel/yama/ptrace_scope ]; then
-    echo "kernel.yama.ptrace_scope:  ${YAMA_PTRACE_SCOPE}"
+    echo "Yama ptrace_scope: ${YAMA_PTRACE_SCOPE}"
   fi
   if [ -r /sys/fs/selinux/booleans/deny_ptrace ]; then
-    echo "SELINUX mode:              ${SELINUX_MODE}"
-    echo "SELINUX deny_ptrace:       ${SELINUX_DENY_PTRACE}"
+    echo "SELINUX mode: ${SELINUX_MODE}"
+    echo "SELINUX deny_ptrace: ${SELINUX_DENY_PTRACE}"
   fi
   echo
   echo "The following diagnostics will be skipped:"
@@ -295,23 +339,31 @@ fi
 TEMP_DIR=$(readlink -e "$ARCHIVE")
 TEMP_DIR_USER=$(stat . -c %U)
 TEMP_DIR_GROUP=$(stat . -c %G)
-if [ "$WHOAMI" == 'root' ]; then
+if [ "$MY_EUSER" == 'root' ]; then
   chown "$TEMP_DIR_USER":"$TEMP_DIR_GROUP" "$TEMP_DIR"
 fi
 cd "$TEMP_DIR"
 
 echo
-log "Caplin Process Diagnostics"
-log "=========================="
+log "Caplin Process Diagnostics ${VERSION}"
+log "================================="
 log
-log "Process ID:      ${PID}"
-log "Process binary:  ${BINARY}"
-if [ "$WHOAMI" == 'root' ]; then
-  log "Script user:     root"
-elif [ "$WHOAMI" == "$PROCESS_USERNAME" ]; then
-  log "Script user:     same user as process $PID"
-fi
+log "Process ID: ${PID}"
+log "Process binary: ${CMD}"
+log "Process binary path: ${BINARY:-?}"
+log "Process effective user: ${PROCESS_EUSER}"
+log "Process real user: ${PROCESS_RUSER}"
+log "Process saved user: ${PROCESS_SUSER}"
+log "Script effective user: ${MY_EUSER}"
+log "Script real user: ${MY_RUSER}"
 log "Script temp dir: ./$ARCHIVE"
+if [ -r /proc/sys/kernel/yama/ptrace_scope ]; then
+  log "Yama ptrace_scope: ${YAMA_PTRACE_SCOPE}"
+fi
+if [ -r /sys/fs/selinux/booleans/deny_ptrace ]; then
+  log "SELINUX mode: ${SELINUX_MODE}"
+  log "SELINUX deny_ptrace: ${SELINUX_DENY_PTRACE}"
+fi
 log
 
 if [ -r /etc/os-release ]; then
@@ -377,25 +429,29 @@ else
   log "Skipping 'vmstat' output (procps package required)"
 fi
 
-if [ -n "$DFW" ]; then
+if [ $DUMPABLE -eq 0 ]; then
+  log "Skipping DFW commands info, status and versions (cannot determine path to ${CMD} binary)"
+elif [ -z "$DFW" ]; then
+  log "Skipping DFW commands info, status and versions (dfw command not found)"
+else
   log "Recording 'dfw info' output"
   "$DFW" info > dfw-info.out 2>&1
   log "Recording 'dfw status' output"
   "$DFW" status > dfw-status.out 2>&1
   log "Recording 'dfw versions' output"
   "$DFW" versions > dfw-versions.out 2>&1
-else
-  log "Skipping Caplin Deployment Framework reports (dfw command not found)"
 fi
 
 if [ $GDB_INSTALLED -eq 0 ]; then
   log "Skipping GDB thread backtraces (gdb package required)"
 elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping GDB thread backtraces (prohibited by SELINUX deny_ptrace)"
-elif [ $YAMA_PTRACE_SCOPE -ne 0 -a "$WHOAMI" == "$PROCESS_USERNAME" ]; then
+elif [ $YAMA_PTRACE_SCOPE -ne 0 -a "$MY_EUSER" == "$PROCESS_EUSER" ]; then
   log "Skipping GDB thread backtraces (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
   log "Skipping GDB thread backtraces (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
+elif [ $DUMPABLE -eq 0 ]; then
+  log "Skipping GDB thread backtraces (cannot read /proc/$PID/exe, which indicates a failed ptrace access mode check)"
 else
   for i in {1..3}; do
     log "${i}/3: Dumping GDB thread backtraces for process $PID"
@@ -416,8 +472,8 @@ fi
 
 if command -v jcmd >/dev/null 2>&1; then
   if jcmd -l | grep "^$PID " > /dev/null 2>&1; then
-    if [ "$WHOAMI" == 'root' ]; then
-      JCMD="sudo -u '$PROCESS_USERNAME' $(which jcmd)"
+    if [ "$MY_EUSER" == 'root' ]; then
+      JCMD="sudo -u '$PROCESS_EUSER' $(which jcmd)"
     else
       JCMD="jcmd"
     fi
@@ -456,8 +512,8 @@ if command -v jcmd >/dev/null 2>&1; then
     log "Recording JVM performance counters"
     $JCMD $PID PerfCounter.print > jvm-perfcounter 2>> diagnostics.log
     if command -v jstat > /dev/null 2>&1; then
-      if [ "$WHOAMI" == 'root' ]; then
-        JSTAT="sudo -u '$PROCESS_USERNAME' $(which jstat)"
+      if [ "$MY_EUSER" == 'root' ]; then
+        JSTAT="sudo -u '$PROCESS_EUSER' $(which jstat)"
       else
         JSTAT="jstat"
       fi
@@ -468,7 +524,7 @@ if command -v jcmd >/dev/null 2>&1; then
       log "Skipping JVM jstat statistics (jstat utility not found)"
     fi
   else
-    log "Skipping JVM diagnostics (process $PID has no JVM)"
+    log "Skipping JVM diagnostics (process $PID has no detectable JVM)"
   fi
 else
   log "Skipping JVM diagnostics (jcmd utility not found)"
@@ -481,10 +537,12 @@ elif ! command -v strace > /dev/null 2>&1; then
   log "Skipping 'strace' output (strace package required)"
 elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping 'strace' output (prohibited by SELINUX deny_ptrace)"
-elif [ $YAMA_PTRACE_SCOPE -ne 0 -a "$WHOAMI" == "$PROCESS_USERNAME" ]; then
+elif [ $YAMA_PTRACE_SCOPE -ne 0 -a "$MY_EUSER" == "$PROCESS_EUSER" ]; then
   log "Skipping 'strace' output (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
   log "Skipping 'strace' output (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
+elif [ $DUMPABLE -eq 0 ]; then
+  log "Skipping 'strace' output (cannot read /proc/$PID/exe, which indicates a failed ptrace access mode check)"
 else
   log "Recording 'strace' output for process $PID (20 seconds)"
   timeout 20 strace -ff -tt -o $CMD-strace -p $PID >/dev/null 2>&1
@@ -499,10 +557,12 @@ elif [ $GDB_INSTALLED -eq 0 ]; then
   log "Skipping GDB core dump (gdb package required)"
 elif [ $SELINUX_MODE == 'Enforcing' -a $SELINUX_DENY_PTRACE -eq 1 ]; then
   log "Skipping GDB core dump (prohibited by SELINUX deny_ptrace)"
-elif [ $YAMA_PTRACE_SCOPE -ne 0 -a "$WHOAMI" == "$PROCESS_USERNAME" ]; then
+elif [ $YAMA_PTRACE_SCOPE -ne 0 -a "$MY_EUSER" == "$PROCESS_EUSER" ]; then
   log "Skipping GDB core dump (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
 elif [ $YAMA_PTRACE_SCOPE -eq 3 ]; then
   log "Skipping GDB core dump (prohibited by Yama kernel module: ptrace_scope $YAMA_PTRACE_SCOPE)"
+elif [ $DUMPABLE -eq 0 ]; then
+  log "Skipping GDB core dump (cannot read /proc/$PID/exe, which indicates a failed ptrace access mode check)"
 else
   PROCESS_MEMORY=$(ps -o vsz= -q $PID)
   PROCESS_MEMORY=$(( $PROCESS_MEMORY / 1024 ))
@@ -549,7 +609,7 @@ else
   fi
 fi
 
-if [ "$WHOAMI" == 'root' ]; then
+if [ "$MY_EUSER" == 'root' ]; then
   chown "$TEMP_DIR_USER":"$TEMP_DIR_GROUP" ./*
 fi
 log
@@ -563,7 +623,7 @@ log
 log "Archiving files to ${ARCHIVE}.tar.gz"
 cd ..
 nice -n 10 tar -chzf "${ARCHIVE}.tar.gz" "$ARCHIVE"
-if [ $WHOAMI == 'root' ]; then
+if [ $MY_EUSER == 'root' ]; then
   chown "$TEMP_DIR_USER":"$TEMP_DIR_GROUP" "${ARCHIVE}.tar.gz"
 fi
 rm "$TEMP_DIR"/*
